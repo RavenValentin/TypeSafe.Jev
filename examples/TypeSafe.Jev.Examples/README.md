@@ -1,8 +1,7 @@
 # TypeSafe.Jev examples
 
-Fifteen small programs covering everything the library does. They run **with or without an API key** —
-offline the requests are answered by a local fake that reads the questions you actually sent, so you can
-check the whole path (encoding → retries → decoding → typed accessors) before spending a token.
+Fifteen small programs covering everything the library does. They run **with or without an API key**, so you
+can try the library out before signing up for anything.
 
 ## Run them
 
@@ -12,14 +11,14 @@ From the repository root:
 # list the examples
 dotnet run --project examples/TypeSafe.Jev.Examples
 
-# one example, offline (no key needed)
+# run one
 dotnet run --project examples/TypeSafe.Jev.Examples -- 03
 
-# all of them
+# run all of them
 dotnet run --project examples/TypeSafe.Jev.Examples -- all
 ```
 
-Requires the .NET 9 SDK. Nothing else to install, no configuration file to create.
+Requires the .NET 10 SDK. Nothing else to install, no configuration file to create.
 
 ## Against the real API
 
@@ -34,15 +33,23 @@ $env:TYPESAFE_API_KEY = "sk-..."
 set TYPESAFE_API_KEY=sk-...
 ```
 
-With the variable set, the examples call `https://api.typesafe.ai` for real. Add `--offline` to force the
-fake back on when you want to re-run something without paying for it:
+With the variable set, the examples call `https://api.typesafe.ai` for real. Pass `--offline` to run them
+without spending tokens:
 
 ```bash
 dotnet run --project examples/TypeSafe.Jev.Examples -- all --offline
 ```
 
-Get a key at [typesafe.ai](https://typesafe.ai). Other variables the client honours:
-`TYPESAFE_BASE_URL`, `TYPESAFE_DEFAULT_MODEL`.
+Get a key at [typesafe.ai](https://typesafe.ai). Other variables the client honours: `TYPESAFE_BASE_URL`,
+`TYPESAFE_DEFAULT_MODEL`.
+
+## Offline mode
+
+Without an API key the examples run offline: requests are answered locally instead of over the network, so
+the library runs end to end and you can see the code work. The probabilities are not a real model's
+judgment — use a key for that.
+
+The same approach works in your own tests: give `JevClient` your own `HttpMessageHandler`.
 
 ## What is in the box
 
@@ -57,21 +64,9 @@ Get a key at [typesafe.ai](https://typesafe.ai). Other variables the client hono
 | 07 | [`07_StructuredInstructions.cs`](07_StructuredInstructions.cs) | JSON rubrics with `what` / `not_for` / `examples` |
 | 08 | [`08_ConfidenceRouting.cs`](08_ConfidenceRouting.cs) | Automate the confident cases, escalate the rest |
 | 09 | [`09_ErrorHandling.cs`](09_ErrorHandling.cs) | Every exception type and what to do about it |
-| 10 | [`10_ClientConfiguration.cs`](10_ClientConfiguration.cs) | Timeouts, retries, custom `HttpClient`, pinned models |
+| 10 | [`10_ClientConfiguration.cs`](10_ClientConfiguration.cs) | Timeouts, retries, per-call options, pinned models |
 | 11 | [`11_ListModels.cs`](11_ListModels.cs) | `GET /v1/models` |
 | 12 | [`12_ParallelFanOut.cs`](12_ParallelFanOut.cs) | Many states at once, kept under the rate limit |
 | 13 | [`13_Cancellation.cs`](13_Cancellation.cs) | Cancellation token vs. per-attempt timeout |
 | 14 | [`14_TaxonomyWalk.cs`](14_TaxonomyWalk.cs) | Classify down a tree, stop when confidence drops |
 | 15 | [`15_NoulBoundaries.cs`](15_NoulBoundaries.cs) | Moving a decision boundary with criteria |
-
-## How offline mode works
-
-[`Offline/FakeJevHandler.cs`](Offline/FakeJevHandler.cs) is an `HttpMessageHandler` that parses the outgoing
-request, builds a well-formed answer for each question it finds, and returns it. Values are derived from the
-state and the question with a stable hash, so repeated runs give the same numbers and changing a rubric
-changes the answer.
-
-It exercises the library, not the model — the probabilities are synthetic. Use it to verify that your
-questions encode correctly and your code handles the answers; use a real key to find out what Jev thinks.
-
-The same trick works in your own tests: `new JevClient(new HttpClient(yourHandler), options)`.

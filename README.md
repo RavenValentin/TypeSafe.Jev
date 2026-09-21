@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/RavenValentin/TypeSafe.Jev/actions/workflows/ci.yml/badge.svg)](https://github.com/RavenValentin/TypeSafe.Jev/actions/workflows/ci.yml)
 [![NuGet](https://img.shields.io/nuget/v/TypeSafe.Jev.svg?logo=nuget)](https://www.nuget.org/packages/TypeSafe.Jev)
+[![Downloads](https://img.shields.io/nuget/dt/TypeSafe.Jev.svg)](https://www.nuget.org/packages/TypeSafe.Jev)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 **Ask an AI a typed question. Get an answer your `switch` statement can use.**
@@ -10,53 +11,30 @@
 Category category = res.Choice("category").As<Category>();   // a real enum, not a string to parse
 ```
 
-[Jev](https://docs.typesafe.ai) is TypeSafe AI's System One model: you hand it some state and a set of small
+[Jev](https://docs.typesafe.ai) is TypeSafe AI's System One model. You hand it some state and a set of small
 typed questions, and it answers each one with a **value, a probability distribution and a confidence score**.
-No prompt engineering, no "please respond only with JSON", no stripping code fences off the reply — and no
-15-second wait for a paragraph you were going to `Regex` anyway.
+No prompt engineering, no "please respond only with JSON", no stripping code fences off the reply.
 
-TypeSafe.Jev makes that feel like ordinary C#:
+## Features
 
 - **Your enum is the question.** Declare the options once, get that enum back, and let the compiler find the
   `switch` branch you forgot when you add a member.
-- **Confidence is a first-class number.** Auto-approve above your threshold, route the rest to a human — the
-  one pattern that makes model output safe to act on, and it takes four lines.
+- **Confidence is a first-class number.** Auto-approve above your threshold and route the rest to a human.
 - **One dependency.** `Microsoft.Extensions.Logging.Abstractions`, and nothing else. CI reads the packed
-  `.nuspec` and fails on a second one, so the promise cannot rot.
-- **Trim- and Native AOT-safe.** No reflection over the wire format at all; a native binary is published and
-  run on every build to prove it.
+  `.nuspec` and fails on a second one.
+- **Trim- and Native AOT-safe.** A native binary is published and run on every build to prove it.
 - **Retries that match the official SDKs.** 408/429/5xx, backoff with jitter, `Retry-After`, per-attempt
-  timeouts and a budget for the whole call — already wired, no Polly.
-- **Try it without a key.** All fifteen examples run offline against a local fake, so you can watch the whole
-  path work before signing up for anything.
+  timeouts and a budget for the whole call. No Polly.
+- **Logging and OpenTelemetry built in**, through `ILogger`, `ActivitySource` and `Meter` — no extra packages.
+- **Testable offline.** The examples, and your own tests, can run without an API key.
 
----
+## Requirements
 
-## Contents
-
-- [Install](#install)
-- [Quickstart](#quickstart)
-- [The three question types](#the-three-question-types)
-- [Choices from enums](#choices-from-enums)
-- [State, instructions and criteria: `JsonContent`](#state-instructions-and-criteria-jsoncontent)
-- [Raw questions](#raw-questions)
-- [Reading answers](#reading-answers)
-- [Typed responses](#typed-responses)
-- [Configuration](#configuration)
-- [Per-call options](#per-call-options)
-- [Retries and timeouts](#retries-and-timeouts)
-- [Errors](#errors)
-- [Cancellation](#cancellation)
-- [Logging](#logging)
-- [Observability](#observability)
-- [Dependency injection](#dependency-injection)
-- [Testing code that uses the client](#testing-code-that-uses-the-client)
-- [Examples](#examples)
-- [Project layout](#project-layout)
-- [Roadmap](#roadmap)
-- [License](#license)
-
----
+| | |
+|---|---|
+| Target frameworks | `net8.0`, `net9.0`, `net10.0` |
+| Language | C# 12 or later |
+| API key | `TYPESAFE_API_KEY` from [typesafe.ai](https://typesafe.ai) |
 
 ## Install
 
@@ -64,8 +42,9 @@ TypeSafe.Jev makes that feel like ordinary C#:
 dotnet add package TypeSafe.Jev
 ```
 
-Targets `net8.0`, `net9.0` and `net10.0`. Get an API key from [typesafe.ai](https://typesafe.ai) and put it
-in `TYPESAFE_API_KEY`.
+```xml
+<PackageReference Include="TypeSafe.Jev" Version="0.1.0" />
+```
 
 ## Quickstart
 
@@ -109,30 +88,24 @@ var queue = (category, confidence) switch
 Questions are independent and answered in one round trip, so ask everything about a state together: the
 state is tokenized once, and you get one consistent read of the same text.
 
-## The three question types
+## Usage
 
-### Noul — yes/no
+### The three question types
 
-Answers with a probability from 0 to 1. Near 1 is yes, near 0 is no, near 0.5 means the model genuinely
-cannot tell. You pick the threshold; nothing forces you to collapse it to a `bool`.
+**Noul — yes/no.** Answers with a probability from 0 to 1. Near 1 is yes, near 0 is no, near 0.5 means the
+model cannot tell. You pick the threshold.
 
 ```csharp
 ["urgent"] = Question.Noul("Does this message express urgency?")
-```
 
-Pin down where the line sits when the default reading is not yours:
-
-```csharp
 ["complaint"] = Question.Noul(
     "Is this message a complaint?",
     whenTrue:  "The customer is dissatisfied and expects something to change, even if politely phrased",
     whenFalse: "Neutral reports, questions, or feedback offered without expecting a fix")
 ```
 
-### Choice — pick one
-
-The answer carries the winning name, a confidence, and the probability of every option — so you can see when
-second place was close.
+**Choice — pick one.** The answer carries the winning name, a confidence, and the probability of every
+option, so you can see when second place was close.
 
 ```csharp
 ["queue"] = Question.Choice("Which queue should handle this?", new Dictionary<string, JsonContent>
@@ -146,65 +119,59 @@ second place was close.
 ["tone"] = Question.Choice("What is the customer's tone?", "calm", "frustrated", "angry")
 ```
 
-### Score — rate on a scale
-
-The answer is the probability-weighted average across the rubric, so `1.7` means "mostly level 2, pulled a
-little towards level 1" — more information than any single level could carry. The first level is score `0`.
+**Score — rate on a scale.** The answer is the probability-weighted average across the rubric, so `1.7` means
+"mostly level 2, pulled a little towards level 1". The first level is score `0`.
 
 ```csharp
 ["frustration"] = Question.Score("How frustrated is this customer?",
     "calm and matter-of-fact", "mildly annoyed", "clearly frustrated", "angry, threatening to leave")
 ```
 
-The API accepts at most 255 choice options and 2–10 score levels. TypeSafe.Jev does not enforce those numbers
-client-side — an out-of-range question comes back as a `JevUnprocessableEntityException` naming the field.
-What *is* rejected before the network is structural: an empty question set, an empty option list, an empty
-rubric, a raw question with no `type`.
+The API accepts at most 255 choice options and 2–10 score levels, and rejects an out-of-range question with a
+`JevUnprocessableEntityException` naming the field. What this library rejects before the network is
+structural: an empty question set, an empty option list, an empty rubric, a raw question with no `type`.
 
-## Choices from enums
+### Choices from enums
 
-The typed path, and the reason this library exists. Your enum *is* the option list:
+Your enum *is* the option list:
 
 ```csharp
 enum Sentiment
 {
     [Description("Happy with the product or the support")] Positive,
     [Description("Neither happy nor unhappy")]             Neutral,
-    [Description("Unhappy, complaining, or disappointed")]  Negative,
+    [Description("Unhappy, complaining, or disappointed")] Negative,
 }
 
-["sentiment"] = Question.Choice<Sentiment>("What is the overall sentiment?")
+["sentiment"] = Question.Choice<Sentiment>("What is the overall sentiment?");
 // ...
 Sentiment s = res.Choice("sentiment").As<Sentiment>();
 ```
 
 - Member names travel as snake_case: `TechnicalIssue` → `technical_issue`.
 - `[Description]` becomes the option's rubric; without one the option is sent with an explicit `null`.
-- `As<TEnum>()` throws `JevResponseValidationException` if the API ever returns a name that is not a member —
-  which beats a silently wrong `default`.
+- `As<TEnum>()` throws `JevResponseValidationException` if the API returns a name that is not a member, which
+  beats a silently wrong `default`.
 
-Add a member and both the request and your `switch` update together; the compiler names the branch you forgot.
 `EnumNames.ToWire` / `EnumNames.FromWire` expose the mapping if you need it elsewhere.
 
-## State, instructions and criteria: `JsonContent`
+### State, instructions and criteria: `JsonContent`
 
-Everywhere the API takes "text, an object, or an array", TypeSafe.Jev takes a `JsonContent`. It converts
-implicitly from `string` and from `JsonNode`, and `JsonContent.From(value)` serializes anything else — pass a
-`JsonTypeInfo<T>` as the second argument in a trimmed or AOT app.
+Everywhere the API takes "text, an object, or an array", this library takes a `JsonContent`. It converts
+implicitly from `string` and `JsonNode`; `JsonContent.From(value)` serializes anything else, and takes a
+`JsonTypeInfo<T>` for trimmed or AOT apps.
 
 ```csharp
 await client.SystemOneAsync("plain text", questions);
 await client.SystemOneAsync(new JsonObject { ["document"] = "…", ["locale"] = "uk" }, questions);
-await client.SystemOneAsync(JsonContent.From(order), questions);              // reflection
+await client.SystemOneAsync(JsonContent.From(order), questions);
 await client.SystemOneAsync(JsonContent.From(order, MyJson.Default.Order), questions);   // AOT-safe
 ```
 
-Nodes are deep-cloned on the way in and out, so one `JsonObject` can appear in several questions and a
-question can be sent any number of times — `System.Text.Json` nodes have a single parent, and holding one by
-reference would throw the second time. A default `JsonContent` means *omit this field*; `JsonContent.Null`
-means *send an explicit null*.
+Nodes are deep-cloned in and out, so one `JsonObject` can appear in several questions and a question can be
+sent any number of times. A default `JsonContent` omits the field; `JsonContent.Null` sends an explicit null.
 
-Rubrics take structure too, which is how you say what a level means and what it excludes:
+Rubrics take structure too:
 
 ```csharp
 var tier = new ChoiceQuestion
@@ -222,17 +189,17 @@ var tier = new ChoiceQuestion
 };
 ```
 
-## Raw questions
+### Raw questions
 
 A `JsonObject` converts implicitly to a `Question` and is sent exactly as given — the escape hatch for fields
-or question types the API gains before this SDK models them. Only its structure is checked (`type` present,
-`choice` and `score` have `criteria`, a score rubric is nonempty); its schema is left to the API.
+or question types the API gains before this library models them. Only its structure is checked; its schema is
+left to the API.
 
 ```csharp
 ["experimental"] = new JsonObject { ["type"] = "noul", ["instructions"] = "…", ["new_field"] = 42 }
 ```
 
-## Reading answers
+### Reading answers
 
 ```csharp
 NoulAnswer   n = res.Noul("urgent");     // .Noul            0..1
@@ -241,7 +208,7 @@ ScoreAnswer  s = res.Score("anger");     // .Score, .Confidence, .Legend, .Proba
 ```
 
 Asking for the wrong type, or a name that was not in the request, throws `JevResponseValidationException`
-rather than returning `null`. The full distribution is always there when you want it:
+rather than returning `null`. The full distribution is always available:
 
 ```csharp
 foreach (var (name, p) in res.Choice("category").Probabilities.OrderByDescending(x => x.Value))
@@ -251,12 +218,11 @@ foreach (var (name, p) in res.Choice("category").Probabilities.OrderByDescending
 Also on the response: `res.Model` (the exact version that answered), `res.Usage` (token counts) and
 `res.RequestId` (the `x-typesafe-request-id` header — quote it in support requests).
 
-## Typed responses
+### Typed responses
 
 Derive from `SystemOneResponse` and declare answer-typed properties; each is filled from the answer of the
 same name (`[JsonPropertyName]`, else the property name — exact, case-insensitive, then snake_case). Every
-such property is required unless it carries `[OptionalAnswer]`; a missing or wrong-kinded answer is a
-`JevResponseValidationException` naming the field.
+such property is required unless it carries `[OptionalAnswer]`.
 
 ```csharp
 sealed record Ticket : SystemOneResponse
@@ -278,13 +244,13 @@ inferring from it would make the same class validate differently in a Native AOT
 ```csharp
 using var client = new JevClient(new JevClientOptions
 {
-    ApiKey        = "sk-...",
-    BaseAddress   = new Uri("https://api.typesafe.ai"),
-    DefaultModel  = "jev-latest",
-    Timeout       = TimeSpan.FromSeconds(10),   // per attempt
-    Retry         = RetryPolicy.Default,
+    ApiKey         = "sk-...",
+    BaseAddress    = new Uri("https://api.typesafe.ai"),
+    DefaultModel   = "jev-latest",
+    Timeout        = TimeSpan.FromSeconds(10),   // per attempt
+    Retry          = RetryPolicy.Default,
     DefaultHeaders = new Dictionary<string, string> { ["X-Team"] = "support-platform" },
-    LoggerFactory = loggerFactory,
+    LoggerFactory  = loggerFactory,
 });
 ```
 
@@ -295,8 +261,10 @@ using var client = new JevClient(new JevClientOptions
 | `DefaultModel` | `jev-latest` | `TYPESAFE_DEFAULT_MODEL` |
 | `Timeout` | 10 s per attempt | — |
 | `Retry` | `RetryPolicy.Default` | — |
+| `DefaultHeaders` | none | — |
 | `LoggerFactory` | none — no logging | — |
 | `TimeProvider` | `TimeProvider.System` | — |
+| `DisposeHttpClient` | `false` for a supplied client | — |
 
 Blank environment variables count as unset. A missing API key throws at construction, not on the first call.
 `Authorization`, `Accept`, `Content-Type`, `User-Agent`, `X-TypeSafe-SDK` and `X-TypeSafe-Runtime` are
@@ -305,7 +273,7 @@ protected: neither default nor per-call headers can replace them.
 Pin a concrete model (`jev-1.13.0`, not `jev-latest`) wherever you have tuned thresholds against its
 probabilities.
 
-## Per-call options
+### Per-call options
 
 ```csharp
 var res = await client.SystemOneAsync(state, questions, new JevRequestOptions
@@ -322,25 +290,25 @@ var res = await client.SystemOneAsync(state, questions, new JevRequestOptions
 
 ## Retries and timeouts
 
-`RetryPolicy` defaults mirror the official SDKs, so behaviour matches what their docs describe:
+`RetryPolicy` defaults mirror the official SDKs:
 
 | | |
 |---|---|
 | `MaxRetries` | 2 |
 | `HttpStatuses` | 408, 429, 500–599 (including the API's `529 overloaded`) |
-| `RetryConnectionErrors` / `RetryTimeouts` | true |
+| `RetryConnectionErrors` / `RetryTimeouts` | `true` |
 | `BackoffInitial` → `BackoffMax` | 0.5 s doubling to 5 s |
 | `BackoffJitter` | 0.25 subtracted at random |
-| `RespectRetryAfter` / `MaxRetryAfter` | true, up to 60 s; longer waits fall back to backoff |
+| `RespectRetryAfter` / `MaxRetryAfter` | `true`, up to 60 s; longer waits fall back to backoff |
 | `Budget` | 30 s for the whole call, waits included |
 | `Predicate` | your last word — it can only narrow the rules above |
 
-`400`, `401`, `403`, `404` and `422` are never retried: retrying a malformed request just spends another call.
-`Timeout` is per attempt, so with two retries one call can span three timeouts plus backoff — `Budget` is the
-ceiling on the lot, and a retry whose wait would exceed it is not taken.
+`400`, `401`, `403`, `404` and `422` are never retried. `Timeout` is per attempt, so with two retries one call
+can span three timeouts plus backoff; `Budget` is the ceiling on the lot, and a retry whose wait would exceed
+it is not taken.
 
-`RetryPolicy.None` turns retrying off. There is no Polly dependency; if you want pluggable policies, pass
-your own `HttpClient` built with `Microsoft.Extensions.Http.Resilience` and set `Retry = RetryPolicy.None`.
+`RetryPolicy.None` turns retrying off. For pluggable policies, pass your own `HttpClient` built with
+`Microsoft.Extensions.Http.Resilience` and set `Retry = RetryPolicy.None`.
 
 ## Errors
 
@@ -363,6 +331,21 @@ Every `JevApiException` carries `Status`, the raw `Body`, `RequestId` and `Endpo
 `POST https://api.typesafe.ai/v1/systemone: 429 slow down (request_id=…)`, and the endpoint never carries
 credentials or a query string.
 
+```csharp
+try
+{
+    var res = await client.SystemOneAsync(state, questions);
+}
+catch (JevRateLimitException ex)          // retries already exhausted
+{
+    logger.LogWarning("Rate limited, server asked for {Delay}", ex.RetryAfter);
+}
+catch (JevApiException ex)
+{
+    logger.LogError("Jev returned {Status}, request {RequestId}: {Body}", ex.Status, ex.RequestId, ex.Body);
+}
+```
+
 ## Cancellation
 
 The token covers the whole call, retries and waits included:
@@ -373,7 +356,7 @@ var res = await client.SystemOneAsync(state, questions, cancellationToken: cts.T
 ```
 
 Cancelling raises `OperationCanceledException` and is never retried; a per-attempt timeout raises
-`JevTimeoutException`. The two are kept apart on purpose — one is your decision, the other is the network's.
+`JevTimeoutException`. The two are kept apart on purpose.
 
 ## Logging
 
@@ -383,8 +366,8 @@ redacted. **Bodies are not**: they are whatever state you sent. Do not enable De
 
 ## Observability
 
-Traces and metrics go through `ActivitySource` and `Meter`, which ship in the .NET runtime — so
-OpenTelemetry support costs no package reference, and with nobody listening the client skips the bookkeeping.
+Traces and metrics go through `ActivitySource` and `Meter`, which ship in the .NET runtime, so OpenTelemetry
+support costs no package reference. With nobody listening, the client skips the bookkeeping.
 
 ```csharp
 services.AddOpenTelemetry()
@@ -392,8 +375,7 @@ services.AddOpenTelemetry()
     .WithMetrics(m => m.AddMeter(JevTelemetry.MeterName));
 ```
 
-One span covers one call *including its retries* (`http.request.resend_count`). Individual HTTP attempts come
-from .NET's own instrumentation and appear beneath it only if you subscribe to that as well.
+One span covers one call *including its retries* (`http.request.resend_count`).
 
 | Instrument | |
 |---|---|
@@ -401,17 +383,16 @@ from .NET's own instrumentation and appear beneath it only if you subscribe to t
 | `typesafe_jev.client.retries` | Counter — attempts after the first |
 | `typesafe_jev.client.token.usage` | Counter — tagged `input` / `output` and the answering model |
 
-**No content is recorded** — no state, questions, answers or headers. What is recorded is what you configured:
-the model you asked for and your base URL's host and path. A failed span's description is fixed text
-(`HTTP 401`, `cancelled`, `timeout`), never the server's message, which could echo your request.
+No content is recorded — no state, questions, answers or headers. What is recorded is what you configured:
+the model you asked for, and your base URL's host and path.
 
 ## Dependency injection
 
-There is no `AddJevClient()` package — it would cost the one-dependency promise, and registering the client
-is a few lines you can read. The client is thread-safe and cheap to construct.
+There is no `AddJevClient()` package; registering the client is a few lines you can read, and the client is
+thread-safe and cheap to construct.
 
 ```csharp
-// A singleton on the SDK's own handler — the one to reach for.
+// A singleton on the library's own handler — the one to reach for.
 services.AddSingleton<IJevClient>(sp => new JevClient(new JevClientOptions
 {
     ApiKey = sp.GetRequiredService<IConfiguration>()["TypeSafe:ApiKey"],
@@ -434,35 +415,45 @@ services.AddTransient<IJevClient>(sp => new JevClient(
     }));
 ```
 
-## Testing code that uses the client
+## Testing
 
 `JevClient` implements `IJevClient`, so your code can take the interface and your tests can hand it a fake.
-To fake at the HTTP level instead — and exercise encoding, retries and decoding for real — give the real
-client your own handler:
+To test at the HTTP level instead — exercising encoding, retries and decoding for real — give the real client
+your own `HttpMessageHandler`:
 
 ```csharp
 using var client = new JevClient(new HttpClient(myHandler), new JevClientOptions { ApiKey = "test" });
 ```
 
-That is exactly what the examples do offline, and what the test suite does throughout.
+Both work without an API key and without a network, so a test suite that uses this library stays offline.
 
 ## Examples
 
-Fifteen runnable examples live in [`examples/TypeSafe.Jev.Examples`](examples/TypeSafe.Jev.Examples) — and they run
-**without an API key**. Offline, a local fake answers from the questions you actually sent, so the whole path
-(encoding → retries → decoding → typed accessors) is exercised for real; only the model's judgment is
-synthetic.
+Fifteen runnable examples live in [`examples/TypeSafe.Jev.Examples`](examples/TypeSafe.Jev.Examples), covering
+all three question types, enum choices, structured state and rubrics, confidence-gated routing, error
+handling, configuration, parallel fan-out, cancellation and taxonomy walking.
 
 ```bash
 dotnet run --project examples/TypeSafe.Jev.Examples            # list them
-dotnet run --project examples/TypeSafe.Jev.Examples -- 03      # run one, offline
-dotnet run --project examples/TypeSafe.Jev.Examples -- all     # run all, offline
+dotnet run --project examples/TypeSafe.Jev.Examples -- 03      # run one
+dotnet run --project examples/TypeSafe.Jev.Examples -- all     # run all
 ```
 
-Set `TYPESAFE_API_KEY` to call the real API, and pass `--offline` to force the fake back on. See the
-[examples README](examples/TypeSafe.Jev.Examples/README.md) for the full list and setup.
+They can be run **offline, without an API key**, so you can try the library out before signing up for
+anything. Set `TYPESAFE_API_KEY` to call the real API, and pass `--offline` to go back to offline mode. See
+the [examples README](examples/TypeSafe.Jev.Examples/README.md) for details.
 
-## Project layout
+## Building from source
+
+```bash
+git clone https://github.com/RavenValentin/TypeSafe.Jev.git
+cd TypeSafe.Jev
+dotnet build -c Release
+dotnet test
+```
+
+Requires the .NET 10 SDK, which builds all three target frameworks. Open `TypeSafe.Jev.sln` in Visual Studio
+2026 or later, or in JetBrains Rider or VS Code with the C# extension.
 
 ```
 src/TypeSafe.Jev/
@@ -473,19 +464,30 @@ src/TypeSafe.Jev/
   Json/         JsonContent, JevJson, the source-generated JSON context
   Diagnostics/  JevTelemetry, JevDefaults, Log
   Exceptions/   JevException, JevApiException, status-specific exceptions
-tests/TypeSafe.Jev.Tests.Unit/    54 tests, offline, on all three target frameworks
+tests/TypeSafe.Jev.Tests.Unit/    unit tests, on all three target frameworks
 tests/TypeSafe.Jev.AotSmoke/      published as a native binary and run in CI
 examples/TypeSafe.Jev.Examples/   15 runnable examples
-scripts/                     the guards CI runs: one dependency, current API baseline, changesets
+scripts/                          the guards CI runs, and the changeset tool
 ```
 
-Everything lives in the single `TypeSafe.Jev` namespace — the folders organise the source, not the API surface, so
-one `using TypeSafe.Jev;` is all a consumer needs.
+Everything lives in the single `TypeSafe.Jev` namespace — the folders organise the source, not the API
+surface, so one `using TypeSafe.Jev;` is all a consumer needs.
 
-```bash
-dotnet build -c Release
-dotnet test
-```
+## Contributing
+
+Issues and pull requests are welcome.
+
+- Keep the library at one dependency; `scripts/check-dependencies.sh` enforces it.
+- Add a test for anything that touches request or response shaping.
+- Describe user-visible changes with `scripts/changeset.sh new <major|minor|patch> "…"`.
+- `dotnet build -c Release` treats warnings as errors, including the trim and AOT analyzers.
+
+The wire format is documented at [docs.typesafe.ai](https://docs.typesafe.ai): `POST /v1/systemone` and
+`GET /v1/models`.
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md). Releases follow [semantic versioning](https://semver.org).
 
 ## Roadmap
 
