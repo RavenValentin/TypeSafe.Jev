@@ -10,11 +10,11 @@ updates:
       test-toolchain:
         patterns: ['xunit*', 'Microsoft.NET.Test.Sdk']
     ignore:
-      # Pinned at the OLDEST version that works, deliberately: a library that demands a newer
-      # Microsoft.Extensions line drags every consumer onto it, including the ones still on net8.0.
-      # Patch updates are fine; major and minor ones are not, so Dependabot must not offer them.
+      # Pinned at the OLDEST version that works, deliberately: this is a floor, not a preference.
+      # A library that demands a newer Microsoft.Extensions line drags every consumer onto it, including
+      # the ones still on net8.0 — and raising the floor buys this package nothing, since NuGet already
+      # resolves to whatever higher version the consuming app asks for. So: no bumps at all, any size.
       - dependency-name: Microsoft.Extensions.Logging.Abstractions
-        update-types: ['version-update:semver-major', 'version-update:semver-minor']
 
   - package-ecosystem: github-actions
     directory: /
