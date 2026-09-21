@@ -3,26 +3,30 @@ namespace Jev.Net.Examples;
 /// <summary>
 /// The cancellation token covers the whole call, retries and backoff included — unlike
 /// <see cref="JevClientOptions.Timeout"/>, which applies to each attempt separately.
-/// Cancelling raises OperationCanceledException, never JevTimeoutException.
+/// Cancelling raises OperationCanceledException; a per-attempt timeout raises JevTimeoutException.
+/// The two are kept apart on purpose: one is your decision, the other is the network's.
 /// </summary>
 public static class Cancellation
 {
     public static async Task RunAsync(IJevClient client)
     {
-        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
+        var question = new Dictionary<string, Question> { ["short"] = Question.Noul("Is this text short?") };
 
+        // A generous budget for the whole call, retries included.
+        using var generous = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var res = await client.SystemOneAsync("Any text at all.", question, cancellationToken: generous.Token);
+        Console.WriteLine($"finished within budget: {res.Noul("short").Noul:P0}");
+
+        // A token that is already cancelled: the call never leaves the process.
+        using var cancelled = new CancellationTokenSource();
+        await cancelled.CancelAsync();
         try
         {
-            var res = await client.SystemOneAsync(
-                "Any text at all.",
-                new Dictionary<string, Question> { ["q"] = Question.Noul("Is this text short?") },
-                cancellationToken: cts.Token);
-
-            Console.WriteLine($"finished in time: {res.Noul("q").Noul:P0}");
+            await client.SystemOneAsync("Any text at all.", question, cancellationToken: cancelled.Token);
         }
         catch (OperationCanceledException)
         {
-            Console.WriteLine("cancelled after 50 ms, as expected");
+            Console.WriteLine("cancelled token: OperationCanceledException, as expected");
         }
     }
 }

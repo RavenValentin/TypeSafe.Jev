@@ -8,7 +8,7 @@
     <PackageId>Jev.Net</PackageId>
     <Version>0.1.0</Version>
     <Authors>Valentin Raven</Authors>
-    <Description>Unofficial .NET client for Jev, TypeSafe AI's System One decision model: typed noul/choice/score questions with probabilities and confidence.</Description>
+    <Description>Typed AI decisions for .NET. Ask Jev - TypeSafe AI's System One model - yes/no, single-choice and rated questions about any text or object, and get back a C# enum with a calibrated probability and a confidence score instead of prose to parse. Your enum is the option list; confidence tells you when to escalate to a human. Zero dependencies, retries and Retry-After built in, and fifteen examples that run offline without an API key.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/RavenValentin/Jev.Net</PackageProjectUrl>
     <RepositoryUrl>https://github.com/RavenValentin/Jev.Net</RepositoryUrl>

@@ -3,14 +3,29 @@
 [![NuGet](https://img.shields.io/nuget/v/Jev.Net.svg)](https://www.nuget.org/packages/Jev.Net)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Unofficial .NET client for **[Jev](https://docs.typesafe.ai)**, TypeSafe AI's System One decision model.
+**Ask an AI a typed question. Get an answer your `switch` statement can use.**
 
-TypeSafe ships official SDKs for Python and TypeScript. This is the missing one for .NET.
+```csharp
+Category category = res.Choice("category").As<Category>();   // a real enum, not a string to parse
+```
 
-Jev is not a chat model. You give it some state and a set of typed questions; it answers each one with
-a **value plus a probability distribution and a confidence score**. There is no prose to parse, no JSON
-to coax out of a prompt, and no "sometimes it wraps the answer in a code fence" — the response is
-already the shape your `switch` statement wants.
+[Jev](https://docs.typesafe.ai) is TypeSafe AI's System One model: you hand it some state and a set of small
+typed questions, and it answers each one with a **value, a probability distribution and a confidence score**.
+No prompt engineering, no "please respond only with JSON", no stripping code fences off the reply — and no
+15-second wait for a paragraph you were going to `Regex` anyway.
+
+Jev.Net makes that feel like ordinary C#:
+
+- **Your enum is the question.** Declare the options once, get that enum back, and let the compiler find the
+  `switch` branch you forgot when you add a member.
+- **Confidence is a first-class number.** Auto-approve above your threshold, route the rest to a human — the
+  one pattern that makes model output safe to act on, and it takes four lines.
+- **Zero dependencies.** `HttpClient` and `System.Text.Json`, nothing else. It drops into a worker, a CLI or a
+  desktop app without touching your dependency graph.
+- **Retries that match the official SDKs.** 408/429/5xx, exponential backoff with jitter, `Retry-After`
+  honoured, per-attempt timeouts — already wired, no Polly.
+- **Try it without a key.** All fifteen examples run offline against a local fake, so you can see the whole
+  path work before you sign up for anything.
 
 ```csharp
 var res = await client.SystemOneAsync(ticket, new Dictionary<string, Question>
@@ -401,14 +416,19 @@ foreach (var m in await client.ListModelsAsync())
 
 ## Examples
 
-Fifteen runnable examples live in [`examples/Jev.Net.Examples`](examples/Jev.Net.Examples):
+Fifteen runnable examples live in [`examples/Jev.Net.Examples`](examples/Jev.Net.Examples) — and they run
+**without an API key**. Offline, a local fake answers from the questions you actually sent, so the whole path
+(encoding → retries → decoding → typed accessors) is exercised for real; only the model's judgment is
+synthetic. Clone and go:
 
 ```bash
-export TYPESAFE_API_KEY=sk-...
 dotnet run --project examples/Jev.Net.Examples            # list them
-dotnet run --project examples/Jev.Net.Examples -- 03      # run one
-dotnet run --project examples/Jev.Net.Examples -- all     # run all
+dotnet run --project examples/Jev.Net.Examples -- 03      # run one, offline
+dotnet run --project examples/Jev.Net.Examples -- all     # run all, offline
 ```
+
+Set `TYPESAFE_API_KEY` to call the real API, and pass `--offline` to force the fake back on.
+See [`examples/Jev.Net.Examples/README.md`](examples/Jev.Net.Examples/README.md) for the full setup.
 
 | # | Example | Shows |
 |---|---|---|

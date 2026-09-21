@@ -1,9 +1,13 @@
+using System.Globalization;
 using Jev.Net;
 using Jev.Net.Examples;
 
-// Every example takes a client and prints what it got back.
-// Run one:  dotnet run --project examples/Jev.Net.Examples -- 03
-// Run all:  dotnet run --project examples/Jev.Net.Examples -- all
+// Probabilities read the same on every machine.
+CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
+
+// Run one:      dotnet run --project examples/Jev.Net.Examples -- 03
+// Run all:      dotnet run --project examples/Jev.Net.Examples -- all
+// No API key?   add --offline (or just leave TYPESAFE_API_KEY unset) and answers are synthesized locally.
 var examples = new (string Id, string Title, Func<IJevClient, Task> Run)[]
 {
     ("01", "Noul: a single yes/no question", BasicNoul.RunAsync),
@@ -23,28 +27,34 @@ var examples = new (string Id, string Title, Func<IJevClient, Task> Run)[]
     ("15", "Noul criteria: pinning down what true and false mean", NoulBoundaries.RunAsync),
 };
 
-if (Environment.GetEnvironmentVariable("TYPESAFE_API_KEY") is null)
-{
-    Console.Error.WriteLine("Set TYPESAFE_API_KEY first. Get a key at https://typesafe.ai.");
-    return 1;
-}
+var selection = args.FirstOrDefault(a => !a.StartsWith("--", StringComparison.Ordinal));
+var hasKey = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("TYPESAFE_API_KEY"));
+ExampleClients.Offline = args.Contains("--offline") || !hasKey;
 
-var selected = args.Length == 0 ? null : args[0];
-if (selected is null)
+if (selection is null)
 {
     Console.WriteLine("Examples:\n");
     foreach (var (id, title, _) in examples) Console.WriteLine($"  {id}  {title}");
-    Console.WriteLine("\nPass an id, or 'all'.");
+    Console.WriteLine("\nUsage: dotnet run --project examples/Jev.Net.Examples -- <id|all> [--offline]");
+    Console.WriteLine(hasKey
+        ? "\nTYPESAFE_API_KEY is set: examples call the real API. Add --offline to avoid spending tokens."
+        : "\nTYPESAFE_API_KEY is not set: examples run offline against a local fake.");
     return 0;
 }
 
-using var client = new JevClient();
-var toRun = selected is "all" ? examples : examples.Where(e => e.Id == selected).ToArray();
+var toRun = selection is "all" ? examples : examples.Where(e => e.Id == selection).ToArray();
 if (toRun.Length == 0)
 {
-    Console.Error.WriteLine($"No example '{selected}'.");
+    Console.Error.WriteLine($"No example '{selection}'. Run without arguments to list them.");
     return 1;
 }
+
+// Offline mode answers from the request itself, so the whole library runs end to end —
+// encoding, retries, decoding, typed accessors — without a key, a network, or a bill.
+if (ExampleClients.Offline)
+    Console.WriteLine("[offline] answers are synthesized locally; set TYPESAFE_API_KEY to call the real API.");
+
+using var client = ExampleClients.Create();
 
 foreach (var (id, title, run) in toRun)
 {
