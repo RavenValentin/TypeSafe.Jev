@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0</TargetFrameworks>
+    <RootNamespace>Jev.Net</RootNamespace>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+    <PackageId>Jev.Net</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>Valentin Raven</Authors>
+    <Description>Unofficial .NET client for Jev, TypeSafe AI's System One decision model: typed noul/choice/score questions with probabilities and confidence.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/RavenValentin/Jev.Net</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/RavenValentin/Jev.Net</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>jev;typesafe-ai;ai;decision-engine;dotnet</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Jev.Net/Jev.Net.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Jev.Net.Tests.Unit/Jev.Net.Tests.Unit.csproj" />
+  </Folder>
+</Solution>
