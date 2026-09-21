@@ -2,7 +2,7 @@
 
 All notable changes to this project. Versions follow [semantic versioning](https://semver.org).
 
-## 0.1.0 — unreleased
+## 0.1.0 — 2026-09-21
 
 First release.
 
