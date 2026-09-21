@@ -1,4 +1,7 @@
 <Solution>
+  <Folder Name="/examples/">
+    <Project Path="examples/Jev.Net.Examples/Jev.Net.Examples.csproj" />
+  </Folder>
   <Folder Name="/src/">
     <Project Path="src/Jev.Net/Jev.Net.csproj" />
   </Folder>
