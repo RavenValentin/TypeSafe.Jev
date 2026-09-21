@@ -74,11 +74,11 @@ jobs:
 
       - name: The API baseline is the latest published version
         if: matrix.os == 'ubuntu-latest'
-        run: scripts/check-baseline.sh
+        run: bash scripts/check-baseline.sh
 
       - name: One dependency, as promised
         if: matrix.os == 'ubuntu-latest'
-        run: scripts/check-dependencies.sh artifacts/*.nupkg
+        run: bash scripts/check-dependencies.sh artifacts/*.nupkg
 
       - uses: actions/upload-artifact@v4
         if: matrix.os == 'ubuntu-latest'

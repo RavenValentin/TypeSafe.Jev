@@ -66,7 +66,7 @@ jobs:
         run: dotnet pack src/TypeSafe.Jev/TypeSafe.Jev.csproj --configuration Release --no-build --output artifacts -p:Version=${{ steps.version.outputs.version }}
 
       - name: One dependency, as promised
-        run: scripts/check-dependencies.sh artifacts/*.nupkg
+        run: bash scripts/check-dependencies.sh artifacts/*.nupkg
 
       # Trades this run's OIDC token for a short-lived NuGet key. `user` is the nuget.org account that owns
       # the Trusted Publishing policy — a username, not a secret.
