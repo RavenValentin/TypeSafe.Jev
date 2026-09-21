@@ -30,11 +30,12 @@
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <!-- `dotnet pack` diffs the public surface: across target frameworks now, and against the last published
-         version once PackageValidationBaselineVersion is set below. Built into the SDK, so it costs no
-         PackageReference. After the first release, set the baseline to the newest published version -
-         scripts/check-baseline.sh fails the build if it falls behind, so it cannot quietly decay. -->
+         version named as the baseline. Built into the SDK, so it costs no PackageReference. The baseline
+         must stay at the newest published version or changes made since then go unchecked -
+         scripts/check-baseline.sh fails the build if it falls behind, so it cannot quietly decay.
+         Bump it in the same commit that releases a new version. -->
     <EnablePackageValidation>true</EnablePackageValidation>
-    <!-- <PackageValidationBaselineVersion>0.1.0</PackageValidationBaselineVersion> -->
+    <PackageValidationBaselineVersion>0.1.0</PackageValidationBaselineVersion>
   </PropertyGroup>
 
   <!-- THE dependency. "One dependency" is a promise in the README, and scripts/check-dependencies.sh reads the
