@@ -17,7 +17,7 @@ scripts/changeset.sh release      # --dry-run to see what it would do
 ```
 
 It takes the largest pending bump, works out the next version, moves every pending note into
-`CHANGELOG.md`, bumps `<Version>` in `src/Jev.Net/Jev.Net.csproj`, and deletes the notes. Commit that,
+`CHANGELOG.md`, bumps `<Version>` in `src/TypeSafe.Jev/TypeSafe.Jev.csproj`, and deletes the notes. Commit that,
 then tag it — the tag is what publishes:
 
 ```bash

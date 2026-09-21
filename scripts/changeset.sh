@@ -7,7 +7,7 @@ set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
 dir="$root/.changeset"
-csproj="$root/src/Jev.Net/Jev.Net.csproj"
+csproj="$root/src/TypeSafe.Jev/TypeSafe.Jev.csproj"
 changelog="$root/CHANGELOG.md"
 
 current_version() { sed -n 's:.*<Version>\([^<]*\)</Version>.*:\1:p' "$csproj" | head -1; }

@@ -55,11 +55,11 @@ jobs:
 
       - name: Native AOT smoke
         run: |
-          dotnet publish tests/Jev.Net.AotSmoke --configuration Release --output aot
-          ./aot/Jev.Net.AotSmoke
+          dotnet publish tests/TypeSafe.Jev.AotSmoke --configuration Release --output aot
+          ./aot/TypeSafe.Jev.AotSmoke
 
       - name: Pack
-        run: dotnet pack src/Jev.Net/Jev.Net.csproj --configuration Release --no-build --output artifacts -p:Version=${{ steps.version.outputs.version }}
+        run: dotnet pack src/TypeSafe.Jev/TypeSafe.Jev.csproj --configuration Release --no-build --output artifacts -p:Version=${{ steps.version.outputs.version }}
 
       - name: One dependency, as promised
         run: scripts/check-dependencies.sh artifacts/*.nupkg

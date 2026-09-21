@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <RootNamespace>TypeSafe.Jev</RootNamespace>
+    <AssemblyName>TypeSafe.Jev</AssemblyName>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- Turns on the trim, single-file and AOT analyzers. With warnings as errors an AOT-unsafe call cannot
+         compile; tests/TypeSafe.Jev.AotSmoke is the proof at the other end, published native and run in CI. -->
+    <IsAotCompatible>true</IsAotCompatible>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <PackageId>TypeSafe.Jev</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>Valentin Raven</Authors>
+    <Copyright>Copyright (c) 2026 Valentin Raven</Copyright>
+    <Description>Typed AI decisions for .NET. Ask Jev - TypeSafe AI's System One model - yes/no, single-choice and rated questions about any text or object, and get back a C# enum with a calibrated probability and a confidence score instead of prose to parse. Your enum is the option list; confidence tells you when to escalate to a human. One dependency, retries and Retry-After built in, trim- and AOT-safe, and fifteen examples that run offline without an API key.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/RavenValentin/TypeSafe.Jev</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/RavenValentin/TypeSafe.Jev</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>typesafe;typesafe-ai;jev;system-one;ai;llm;classification;decision-engine;sdk</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>icon.png</PackageIcon>
+    <PackageReleaseNotes>https://github.com/RavenValentin/TypeSafe.Jev/blob/main/CHANGELOG.md</PackageReleaseNotes>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <!-- `dotnet pack` diffs the public surface: across target frameworks now, and against the last published
+         version once PackageValidationBaselineVersion is set below. Built into the SDK, so it costs no
+         PackageReference. After the first release, set the baseline to the newest published version -
+         scripts/check-baseline.sh fails the build if it falls behind, so it cannot quietly decay. -->
+    <EnablePackageValidation>true</EnablePackageValidation>
+    <!-- <PackageValidationBaselineVersion>0.1.0</PackageValidationBaselineVersion> -->
+  </PropertyGroup>
+
+  <!-- THE dependency. "One dependency" is a promise in the README, and scripts/check-dependencies.sh reads the
+       packed nuspec to enforce it - a second PackageReference here fails CI. Pinned at the oldest version that
+       works, so consumers are never dragged onto a newer Microsoft.Extensions line than the rest of their app. -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="TypeSafe.Jev.Tests.Unit" />
+    <InternalsVisibleTo Include="TypeSafe.Jev.AotSmoke" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\LICENSE" Pack="true" PackagePath="\" />
+    <None Include="..\..\assets\icon.png" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+</Project>

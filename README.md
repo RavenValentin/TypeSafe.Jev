@@ -1,6 +1,6 @@
-# Jev.Net
+# TypeSafe.Jev
 
-[![CI](https://github.com/RavenValentin/Jev.Net/actions/workflows/ci.yml/badge.svg)](https://github.com/RavenValentin/Jev.Net/actions/workflows/ci.yml)
+[![CI](https://github.com/RavenValentin/TypeSafe.Jev/actions/workflows/ci.yml/badge.svg)](https://github.com/RavenValentin/TypeSafe.Jev/actions/workflows/ci.yml)
 [![NuGet](https://img.shields.io/nuget/v/TypeSafe.Jev.svg?logo=nuget)](https://www.nuget.org/packages/TypeSafe.Jev)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
@@ -15,7 +15,7 @@ typed questions, and it answers each one with a **value, a probability distribut
 No prompt engineering, no "please respond only with JSON", no stripping code fences off the reply — and no
 15-second wait for a paragraph you were going to `Regex` anyway.
 
-Jev.Net makes that feel like ordinary C#:
+TypeSafe.Jev makes that feel like ordinary C#:
 
 - **Your enum is the question.** Declare the options once, get that enum back, and let the compiler find the
   `switch` branch you forgot when you add a member.
@@ -71,7 +71,7 @@ in `TYPESAFE_API_KEY`.
 
 ```csharp
 using System.ComponentModel;
-using Jev.Net;
+using TypeSafe.Jev;
 
 enum Category
 {
@@ -156,7 +156,7 @@ little towards level 1" — more information than any single level could carry. 
     "calm and matter-of-fact", "mildly annoyed", "clearly frustrated", "angry, threatening to leave")
 ```
 
-The API accepts at most 255 choice options and 2–10 score levels. Jev.Net does not enforce those numbers
+The API accepts at most 255 choice options and 2–10 score levels. TypeSafe.Jev does not enforce those numbers
 client-side — an out-of-range question comes back as a `JevUnprocessableEntityException` naming the field.
 What *is* rejected before the network is structural: an empty question set, an empty option list, an empty
 rubric, a raw question with no `type`.
@@ -188,7 +188,7 @@ Add a member and both the request and your `switch` update together; the compile
 
 ## State, instructions and criteria: `JsonContent`
 
-Everywhere the API takes "text, an object, or an array", Jev.Net takes a `JsonContent`. It converts
+Everywhere the API takes "text, an object, or an array", TypeSafe.Jev takes a `JsonContent`. It converts
 implicitly from `string` and from `JsonNode`, and `JsonContent.From(value)` serializes anything else — pass a
 `JsonTypeInfo<T>` as the second argument in a trimmed or AOT app.
 
@@ -397,9 +397,9 @@ from .NET's own instrumentation and appear beneath it only if you subscribe to t
 
 | Instrument | |
 |---|---|
-| `jev_net.client.request.duration` | Histogram, seconds — the whole call, waits included |
-| `jev_net.client.retries` | Counter — attempts after the first |
-| `jev_net.client.token.usage` | Counter — tagged `input` / `output` and the answering model |
+| `typesafe_jev.client.request.duration` | Histogram, seconds — the whole call, waits included |
+| `typesafe_jev.client.retries` | Counter — attempts after the first |
+| `typesafe_jev.client.token.usage` | Counter — tagged `input` / `output` and the answering model |
 
 **No content is recorded** — no state, questions, answers or headers. What is recorded is what you configured:
 the model you asked for and your base URL's host and path. A failed span's description is fixed text
@@ -448,24 +448,24 @@ That is exactly what the examples do offline, and what the test suite does throu
 
 ## Examples
 
-Fifteen runnable examples live in [`examples/Jev.Net.Examples`](examples/Jev.Net.Examples) — and they run
+Fifteen runnable examples live in [`examples/TypeSafe.Jev.Examples`](examples/TypeSafe.Jev.Examples) — and they run
 **without an API key**. Offline, a local fake answers from the questions you actually sent, so the whole path
 (encoding → retries → decoding → typed accessors) is exercised for real; only the model's judgment is
 synthetic.
 
 ```bash
-dotnet run --project examples/Jev.Net.Examples            # list them
-dotnet run --project examples/Jev.Net.Examples -- 03      # run one, offline
-dotnet run --project examples/Jev.Net.Examples -- all     # run all, offline
+dotnet run --project examples/TypeSafe.Jev.Examples            # list them
+dotnet run --project examples/TypeSafe.Jev.Examples -- 03      # run one, offline
+dotnet run --project examples/TypeSafe.Jev.Examples -- all     # run all, offline
 ```
 
 Set `TYPESAFE_API_KEY` to call the real API, and pass `--offline` to force the fake back on. See the
-[examples README](examples/Jev.Net.Examples/README.md) for the full list and setup.
+[examples README](examples/TypeSafe.Jev.Examples/README.md) for the full list and setup.
 
 ## Project layout
 
 ```
-src/Jev.Net/
+src/TypeSafe.Jev/
   Client/       IJevClient, JevClient, JevClientOptions, JevRequestOptions, RetryPolicy
   Questions/    Question + Noul/Choice/Score/Raw questions, EnumNames
   Answers/      Answer + Noul/Choice/Score answers, AnswerConverter
@@ -473,14 +473,14 @@ src/Jev.Net/
   Json/         JsonContent, JevJson, the source-generated JSON context
   Diagnostics/  JevTelemetry, JevDefaults, Log
   Exceptions/   JevException, JevApiException, status-specific exceptions
-tests/Jev.Net.Tests.Unit/    54 tests, offline, on all three target frameworks
-tests/Jev.Net.AotSmoke/      published as a native binary and run in CI
-examples/Jev.Net.Examples/   15 runnable examples
+tests/TypeSafe.Jev.Tests.Unit/    54 tests, offline, on all three target frameworks
+tests/TypeSafe.Jev.AotSmoke/      published as a native binary and run in CI
+examples/TypeSafe.Jev.Examples/   15 runnable examples
 scripts/                     the guards CI runs: one dependency, current API baseline, changesets
 ```
 
-Everything lives in the single `Jev.Net` namespace — the folders organise the source, not the API surface, so
-one `using Jev.Net;` is all a consumer needs.
+Everything lives in the single `TypeSafe.Jev` namespace — the folders organise the source, not the API surface, so
+one `using TypeSafe.Jev;` is all a consumer needs.
 
 ```bash
 dotnet build -c Release

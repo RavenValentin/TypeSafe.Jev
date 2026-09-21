@@ -6,7 +6,7 @@
 #   scripts/check-baseline.sh
 set -euo pipefail
 
-csproj='src/Jev.Net/Jev.Net.csproj'
+csproj='src/TypeSafe.Jev/TypeSafe.Jev.csproj'
 
 # Plain sed, not grep -P: this has to run the same on a CI runner and on a developer's Git Bash.
 value_of() { sed -n "s:.*<$1>\([^<]*\)</$1>.*:\1:p" "$csproj" | head -1; }
