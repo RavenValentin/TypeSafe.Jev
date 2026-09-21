@@ -41,7 +41,7 @@
        packed nuspec to enforce it - a second PackageReference here fails CI. Pinned at the oldest version that
        works, so consumers are never dragged onto a newer Microsoft.Extensions line than the rest of their app. -->
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.3" />
   </ItemGroup>
 
   <ItemGroup>
