@@ -55,6 +55,40 @@ public class ClientTests
         Assert.Equal("POST https://api.typesafe.ai/v1/systemone: 429 slow down (request_id=req-9)", error.Message);
     }
 
+    // The two bodies below are recorded verbatim from api.typesafe.ai. The API wraps its explanation in
+    // "detail", as an object for an auth failure and as a bare string for a validation failure — a shape
+    // no document stated, so it is pinned here rather than inferred again later.
+    [Fact]
+    public async Task The_real_401_body_shape_is_understood()
+    {
+        const string body = """
+            {"detail":{"error_type":"authentication_error","message":"Cannot authenticate with the server. Please check your API key and try again."}}
+            """;
+        var handler = new StubHandler(StubHandler.Json(
+            HttpStatusCode.Unauthorized, body, ("x-typesafe-request-id", "req_01a0c545")));
+        using var client = Client(handler, new JevClientOptions { ApiKey = "k", Retry = RetryPolicy.None });
+
+        var error = await Assert.ThrowsAsync<JevAuthenticationException>(() => client.SystemOneAsync("s", Questions));
+
+        Assert.Equal(
+            "POST https://api.typesafe.ai/v1/systemone: 401 Cannot authenticate with the server. "
+            + "Please check your API key and try again. (request_id=req_01a0c545)",
+            error.Message);
+    }
+
+    [Fact]
+    public async Task The_real_validation_body_shape_is_understood()
+    {
+        // Note the status: an over-long score rubric comes back as 400, not the 422 the docs suggest.
+        const string body = """{"detail":"Too many score levels. Must have at most 10 levels."}""";
+        var handler = new StubHandler(StubHandler.Json(HttpStatusCode.BadRequest, body));
+        using var client = Client(handler, new JevClientOptions { ApiKey = "k", Retry = RetryPolicy.None });
+
+        var error = await Assert.ThrowsAsync<JevBadRequestException>(() => client.SystemOneAsync("s", Questions));
+
+        Assert.Contains("400 Too many score levels. Must have at most 10 levels.", error.Message);
+    }
+
     [Fact]
     public async Task An_error_body_that_is_not_json_still_produces_a_usable_message()
     {

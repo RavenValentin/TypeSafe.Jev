@@ -128,7 +128,7 @@ option, so you can see when second place was close.
 ```
 
 The API accepts at most 255 choice options and 2–10 score levels, and rejects an out-of-range question with a
-`JevUnprocessableEntityException` naming the field. What this library rejects before the network is
+`JevBadRequestException` explaining which limit was crossed. What this library rejects before the network is
 structural: an empty question set, an empty option list, an empty rubric, a raw question with no `type`.
 
 ### Choices from enums
