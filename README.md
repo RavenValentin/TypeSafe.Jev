@@ -485,6 +485,19 @@ Issues and pull requests are welcome.
 The wire format is documented at [docs.typesafe.ai](https://docs.typesafe.ai): `POST /v1/systemone` and
 `GET /v1/models`.
 
+### Releasing
+
+```bash
+scripts/changeset.sh release          # bumps the version, moves the notes into CHANGELOG.md
+git commit -am "Release 0.2.0"
+git tag v0.2.0 && git push --follow-tags
+```
+
+The tag is what publishes: `release.yml` builds, tests, runs the AOT smoke check, packs, pushes to
+nuget.org and creates the GitHub release. There is no API key to manage — it authenticates through
+[NuGet Trusted Publishing](https://learn.microsoft.com/nuget/nuget-org/trusted-publishing), whose policy
+must name this repository and `release.yml`.
+
 ## Changelog
 
 See [CHANGELOG.md](CHANGELOG.md). Releases follow [semantic versioning](https://semver.org).

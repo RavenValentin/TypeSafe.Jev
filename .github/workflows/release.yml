@@ -2,6 +2,10 @@ name: Release
 
 # Tag the commit to publish:  git tag v0.2.0 && git push origin v0.2.0
 # The tag is the version; nothing else needs editing in the csproj.
+#
+# Publishing goes through NuGet Trusted Publishing, so there is no API key to store or rotate: the job
+# trades this run's OIDC token for a short-lived one. That needs `id-token: write` below, and a policy on
+# nuget.org whose repository owner, repository name and workflow file all match this job exactly.
 on:
   push:
     tags: ['v*']
@@ -13,12 +17,12 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    environment: nuget
 
     steps:
       - uses: actions/checkout@v4
@@ -64,13 +68,20 @@ jobs:
       - name: One dependency, as promised
         run: scripts/check-dependencies.sh artifacts/*.nupkg
 
+      # Trades this run's OIDC token for a short-lived NuGet key. `user` is the nuget.org account that owns
+      # the Trusted Publishing policy — a username, not a secret.
+      - name: NuGet login
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: valentin.osidach
+
       - name: Push to NuGet
-        env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
         run: |
-          [ -n "$NUGET_API_KEY" ] || { echo "::error::the NUGET_API_KEY secret is not set"; exit 1; }
-          dotnet nuget push "artifacts/*.nupkg" --api-key "$NUGET_API_KEY" \
-            --source https://api.nuget.org/v3/index.json --skip-duplicate
+          dotnet nuget push "artifacts/*.nupkg" \
+            --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
 
       - name: GitHub release
         env:
