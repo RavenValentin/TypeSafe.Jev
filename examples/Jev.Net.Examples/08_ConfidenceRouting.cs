@@ -21,7 +21,7 @@ public static class ConfidenceRouting
         {
             var res = await client.SystemOneAsync(comment, new Dictionary<string, Question>
             {
-                ["verdict"] = Question.Choice("Should this comment be published?", new Dictionary<string, string?>
+                ["verdict"] = Question.Choice("Should this comment be published?", new Dictionary<string, JsonContent>
                 {
                     ["publish"] = "Normal on-topic comment",
                     ["spam"] = "Advertising, link farming, or bot output",

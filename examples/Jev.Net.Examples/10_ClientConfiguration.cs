@@ -1,8 +1,9 @@
 namespace Jev.Net.Examples;
 
 /// <summary>
-/// Defaults match the official SDKs, but everything is adjustable. Note that the timeout is
-/// per attempt, not per call: with MaxRetries = 2 a call can take up to three timeouts plus backoff.
+/// Defaults match the official SDKs, but everything is adjustable — on the client, or per call.
+/// Note that <see cref="JevClientOptions.Timeout"/> is per attempt; the ceiling on the whole call,
+/// waits included, is <see cref="RetryPolicy.Budget"/>.
 /// </summary>
 public static class ClientConfiguration
 {
@@ -12,12 +13,17 @@ public static class ClientConfiguration
         // so the same code can also run offline.
         using var tuned = ExampleClients.Create(new JevClientOptions
         {
-            // ApiKey defaults to TYPESAFE_API_KEY.
-            BaseAddress = new Uri("https://api.typesafe.ai"),
+            // ApiKey defaults to TYPESAFE_API_KEY, BaseAddress to TYPESAFE_BASE_URL.
             DefaultModel = "jev-latest",
-            Timeout = TimeSpan.FromSeconds(30),   // long states need more than the 10s default
-            MaxRetries = 4,
-            MaxRetryAfter = TimeSpan.FromSeconds(20),
+            Timeout = TimeSpan.FromSeconds(30),        // per attempt; long states need more than the 10s default
+            Retry = RetryPolicy.Default with
+            {
+                MaxRetries = 4,
+                BackoffMax = TimeSpan.FromSeconds(10),
+                MaxRetryAfter = TimeSpan.FromSeconds(20),
+                Budget = TimeSpan.FromMinutes(1),      // the whole call, retries and waits included
+            },
+            DefaultHeaders = new Dictionary<string, string> { ["X-Team"] = "support-platform" },
         });
 
         var question = new Dictionary<string, Question>
@@ -30,11 +36,18 @@ public static class ClientConfiguration
 
         // You can also bring your own HttpClient — from IHttpClientFactory, with your own handlers,
         // proxy or logging:  new JevClient(httpClient, options)
-        // The client sets its own per-attempt timeout internally, so leave HttpClient.Timeout alone.
-        using var noRetries = ExampleClients.Create(new JevClientOptions { MaxRetries = 0 });
+        // The client applies its own per-attempt timeout, so leave HttpClient.Timeout alone.
+        using var client = ExampleClients.Create();
 
-        // Pin a specific model version per call when you need reproducible answers.
-        var pinned = await noRetries.SystemOneAsync("A short sentence.", question, model: "jev-1.13.0");
+        // Per-call overrides beat the client's settings, and only for that call.
+        var pinned = await client.SystemOneAsync("A short sentence.", question, new JevRequestOptions
+        {
+            Model = "jev-1.13.0",                      // pin a version where thresholds are tuned
+            Retry = RetryPolicy.None,                  // this one is not worth retrying
+            Timeout = TimeSpan.FromSeconds(5),
+            ExtraHeaders = new Dictionary<string, string> { ["X-Request-Source"] = "example-10" },
+        });
+
         Console.WriteLine($"pinned model: {pinned.Model}");
     }
 }

@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['CHANGELOG.md', '.changeset/**', 'LICENSE']
+  pull_request:
+    paths-ignore: ['CHANGELOG.md', '.changeset/**', 'LICENSE']
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # Linux always. Windows because paths, line endings and culture are where a .NET library usually slips.
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+            10.0.x
+
+      - name: Build (warnings are errors, all three target frameworks)
+        run: dotnet build --configuration Release -p:ContinuousIntegrationBuild=true
+
+      # Offline by construction: nothing here has an API key, and the examples fall back to their local fake.
+      - name: Test
+        shell: bash
+        run: |
+          set -o pipefail
+          dotnet test --configuration Release --no-build 2>&1 | tee test.log
+
+      # A green run that quietly tested one framework is the failure this guards against.
+      - name: Every target framework really ran
+        shell: bash
+        run: |
+          for tfm in net8.0 net9.0 net10.0; do
+            grep -q "Jev.Net.Tests.Unit.dll ($tfm" test.log || { echo "::error::no test run found for $tfm"; exit 1; }
+            echo "ok: tests ran on $tfm"
+          done
+
+      # IsAotCompatible only proves the analyzers are quiet. This publishes a real native binary and runs it:
+      # request encoding, a retry, the reflection-backed typed response, source-generated JSON and error
+      # mapping — all after the trimmer and the AOT compiler have had their way.
+      - name: Native AOT smoke (publish + run)
+        shell: bash
+        run: |
+          dotnet publish tests/Jev.Net.AotSmoke --configuration Release --output aot
+          ./aot/Jev.Net.AotSmoke
+
+      # The examples are the first thing a new user runs, so a broken one is a broken front door.
+      - name: Examples run offline
+        run: dotnet run --project examples/Jev.Net.Examples --configuration Release --no-build -- all --offline
+
+      - name: Pack (also diffs the public API across target frameworks and against the baseline)
+        if: matrix.os == 'ubuntu-latest'
+        run: dotnet pack src/Jev.Net/Jev.Net.csproj --configuration Release --no-build --output artifacts
+
+      - name: The API baseline is the latest published version
+        if: matrix.os == 'ubuntu-latest'
+        run: scripts/check-baseline.sh
+
+      - name: One dependency, as promised
+        if: matrix.os == 'ubuntu-latest'
+        run: scripts/check-dependencies.sh artifacts/*.nupkg
+
+      - uses: actions/upload-artifact@v4
+        if: matrix.os == 'ubuntu-latest'
+        with:
+          name: nupkg
+          path: artifacts/*

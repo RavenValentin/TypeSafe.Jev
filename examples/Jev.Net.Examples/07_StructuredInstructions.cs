@@ -23,7 +23,7 @@ public static class StructuredInstructions
                 },
                 ["question"] = "Route the ticket to the right tier.",
             },
-            Criteria = new Dictionary<string, JsonNode?>
+            Criteria = new Dictionary<string, JsonContent>
             {
                 ["self_serve"] = new JsonObject
                 {

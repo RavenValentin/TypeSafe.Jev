@@ -1,0 +1,82 @@
+name: Release
+
+# Tag the commit to publish:  git tag v0.2.0 && git push origin v0.2.0
+# The tag is the version; nothing else needs editing in the csproj.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish, without the leading v (e.g. 0.2.0)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: nuget
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+            10.0.x
+
+      - name: Work out the version
+        id: version
+        shell: bash
+        run: |
+          version="${{ github.event.inputs.version }}"
+          [ -n "$version" ] || version="${GITHUB_REF_NAME#v}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Publishing $version"
+
+      - name: The changelog mentions this version
+        shell: bash
+        run: |
+          grep -q "## ${{ steps.version.outputs.version }}" CHANGELOG.md \
+            || { echo "::error::CHANGELOG.md has no '## ${{ steps.version.outputs.version }}' section"; exit 1; }
+
+      - name: Build
+        run: dotnet build --configuration Release -p:ContinuousIntegrationBuild=true -p:Version=${{ steps.version.outputs.version }}
+
+      - name: Test
+        run: dotnet test --configuration Release --no-build
+
+      - name: Native AOT smoke
+        run: |
+          dotnet publish tests/Jev.Net.AotSmoke --configuration Release --output aot
+          ./aot/Jev.Net.AotSmoke
+
+      - name: Pack
+        run: dotnet pack src/Jev.Net/Jev.Net.csproj --configuration Release --no-build --output artifacts -p:Version=${{ steps.version.outputs.version }}
+
+      - name: One dependency, as promised
+        run: scripts/check-dependencies.sh artifacts/*.nupkg
+
+      - name: Push to NuGet
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          [ -n "$NUGET_API_KEY" ] || { echo "::error::the NUGET_API_KEY secret is not set"; exit 1; }
+          dotnet nuget push "artifacts/*.nupkg" --api-key "$NUGET_API_KEY" \
+            --source https://api.nuget.org/v3/index.json --skip-duplicate
+
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v${{ steps.version.outputs.version }}" artifacts/*.nupkg \
+            --title "v${{ steps.version.outputs.version }}" \
+            --notes "See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md)." \
+            || echo "release already exists"

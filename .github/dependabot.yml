@@ -1,0 +1,16 @@
+version: 2
+updates:
+  # The library has one dependency on purpose, so this is mostly about the test and CI toolchain.
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      test-toolchain:
+        patterns: ['xunit*', 'Microsoft.NET.Test.Sdk']
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

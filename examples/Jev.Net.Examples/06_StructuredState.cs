@@ -18,7 +18,7 @@ public static class StructuredState
             BillingMatchesShipping: false,
             Email: "qw8812x@mailinator.com");
 
-        var res = await client.SystemOneAsync(order, new Dictionary<string, Question>
+        var res = await client.SystemOneAsync(JsonContent.From(order), new Dictionary<string, Question>
         {
             ["fraud"] = Question.Noul("Does this order look fraudulent?"),
             ["review"] = Question.Score("How much manual review does it need?", "none, ship it", "quick glance", "full manual review", "hold and contact the customer"),

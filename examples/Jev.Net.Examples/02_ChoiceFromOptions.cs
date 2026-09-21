@@ -9,12 +9,12 @@ public static class ChoiceFromOptions
     public static async Task RunAsync(IJevClient client)
     {
         // Imagine these came from your queues table.
-        var queues = new Dictionary<string, string?>
+        var queues = new Dictionary<string, JsonContent>
         {
             ["billing"] = "Charges, refunds, invoices, subscription changes",
             ["integrations"] = "Third-party connections: Stripe, Shopify, webhooks",
             ["account"] = "Login, passwords, seats, permissions",
-            ["other"] = null,
+            ["other"] = default,   // no description: the API reads it by its name
         };
 
         var res = await client.SystemOneAsync(
@@ -24,7 +24,7 @@ public static class ChoiceFromOptions
         var answer = res.Choice("queue");
         Console.WriteLine($"queue: {answer.Choice} (confidence {answer.Confidence:P0})");
 
-        foreach (var (name, p) in answer.Probabilities.OrderByDescending(p => p.Value))
+        foreach (var (name, p) in answer.Probabilities.OrderByDescending(entry => entry.Value))
             Console.WriteLine($"  {name,-14} {p:P1}");
     }
 }

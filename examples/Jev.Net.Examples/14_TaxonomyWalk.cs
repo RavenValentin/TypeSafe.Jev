@@ -7,7 +7,7 @@ namespace Jev.Net.Examples;
 /// </summary>
 public static class TaxonomyWalk
 {
-    private static readonly Dictionary<string, Dictionary<string, string?>> Taxonomy = new()
+    private static readonly Dictionary<string, Dictionary<string, JsonContent>> Taxonomy = new()
     {
         ["root"] = new()
         {

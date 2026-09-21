@@ -1,6 +1,7 @@
 # Jev.Net
 
-[![NuGet](https://img.shields.io/nuget/v/Jev.Net.svg)](https://www.nuget.org/packages/Jev.Net)
+[![CI](https://github.com/RavenValentin/Jev.Net/actions/workflows/ci.yml/badge.svg)](https://github.com/RavenValentin/Jev.Net/actions/workflows/ci.yml)
+[![NuGet](https://img.shields.io/nuget/v/TypeSafe.Jev.svg?logo=nuget)](https://www.nuget.org/packages/TypeSafe.Jev)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 **Ask an AI a typed question. Get an answer your `switch` statement can use.**
@@ -20,23 +21,14 @@ Jev.Net makes that feel like ordinary C#:
   `switch` branch you forgot when you add a member.
 - **Confidence is a first-class number.** Auto-approve above your threshold, route the rest to a human — the
   one pattern that makes model output safe to act on, and it takes four lines.
-- **Zero dependencies.** `HttpClient` and `System.Text.Json`, nothing else. It drops into a worker, a CLI or a
-  desktop app without touching your dependency graph.
-- **Retries that match the official SDKs.** 408/429/5xx, exponential backoff with jitter, `Retry-After`
-  honoured, per-attempt timeouts — already wired, no Polly.
-- **Try it without a key.** All fifteen examples run offline against a local fake, so you can see the whole
-  path work before you sign up for anything.
-
-```csharp
-var res = await client.SystemOneAsync(ticket, new Dictionary<string, Question>
-{
-    ["category"] = Question.Choice<Category>("What is this ticket about?"),
-    ["urgent"]   = Question.Noul("Is the customer in a hurry?"),
-});
-
-Category category = res.Choice("category").As<Category>();   // a real enum
-double urgency    = res.Noul("urgent").Noul;                 // 0..1
-```
+- **One dependency.** `Microsoft.Extensions.Logging.Abstractions`, and nothing else. CI reads the packed
+  `.nuspec` and fails on a second one, so the promise cannot rot.
+- **Trim- and Native AOT-safe.** No reflection over the wire format at all; a native binary is published and
+  run on every build to prove it.
+- **Retries that match the official SDKs.** 408/429/5xx, backoff with jitter, `Retry-After`, per-attempt
+  timeouts and a budget for the whole call — already wired, no Polly.
+- **Try it without a key.** All fifteen examples run offline against a local fake, so you can watch the whole
+  path work before signing up for anything.
 
 ---
 
@@ -45,22 +37,23 @@ double urgency    = res.Noul("urgent").Noul;                 // 0..1
 - [Install](#install)
 - [Quickstart](#quickstart)
 - [The three question types](#the-three-question-types)
-  - [Noul — yes/no](#noul--yesno)
-  - [Choice — pick one](#choice--pick-one)
-  - [Score — rate on a scale](#score--rate-on-a-scale)
 - [Choices from enums](#choices-from-enums)
-- [State: text or structure](#state-text-or-structure)
-- [Structured instructions and rubrics](#structured-instructions-and-rubrics)
+- [State, instructions and criteria: `JsonContent`](#state-instructions-and-criteria-jsoncontent)
+- [Raw questions](#raw-questions)
 - [Reading answers](#reading-answers)
+- [Typed responses](#typed-responses)
 - [Configuration](#configuration)
+- [Per-call options](#per-call-options)
 - [Retries and timeouts](#retries-and-timeouts)
 - [Errors](#errors)
 - [Cancellation](#cancellation)
-- [Listing models](#listing-models)
+- [Logging](#logging)
+- [Observability](#observability)
+- [Dependency injection](#dependency-injection)
+- [Testing code that uses the client](#testing-code-that-uses-the-client)
 - [Examples](#examples)
 - [Project layout](#project-layout)
 - [Roadmap](#roadmap)
-- [Contributing](#contributing)
 - [License](#license)
 
 ---
@@ -68,14 +61,11 @@ double urgency    = res.Noul("urgent").Noul;                 // 0..1
 ## Install
 
 ```bash
-dotnet add package Jev.Net
+dotnet add package TypeSafe.Jev
 ```
 
-Targets `net8.0` and `net9.0`. No third-party dependencies — just `HttpClient` and `System.Text.Json`.
-
-Get an API key from [typesafe.ai](https://typesafe.ai) and put it in `TYPESAFE_API_KEY`.
-
----
+Targets `net8.0`, `net9.0` and `net10.0`. Get an API key from [typesafe.ai](https://typesafe.ai) and put it
+in `TYPESAFE_API_KEY`.
 
 ## Quickstart
 
@@ -91,7 +81,7 @@ enum Category
     Other,
 }
 
-using var client = new JevClient();   // reads TYPESAFE_API_KEY
+using var client = new JevClient();   // key from TYPESAFE_API_KEY
 
 var res = await client.SystemOneAsync(
     state: "I was charged twice for March and support hasn't replied in four days.",
@@ -109,33 +99,28 @@ double anger      = res.Score("anger").Score;   // 0..3, may be fractional
 
 var queue = (category, confidence) switch
 {
-    (_, < 0.7)                    => "manual triage",
-    (Category.Billing, _)         => "finance",
-    (Category.TechnicalIssue, _)  => urgency > 0.8 ? "on-call" : "engineering",
-    _                             => "general",
+    (_, < 0.7)                   => "manual triage",
+    (Category.Billing, _)        => "finance",
+    (Category.TechnicalIssue, _) => urgency > 0.8 ? "on-call" : "engineering",
+    _                            => "general",
 };
 ```
 
-One call, three questions, one tokenization of the state. Asking five questions about the same state
-in one request is far cheaper than five requests — and gives you one consistent read of the same text.
-
----
+Questions are independent and answered in one round trip, so ask everything about a state together: the
+state is tokenized once, and you get one consistent read of the same text.
 
 ## The three question types
 
-Build them with the factories on `Question`, or construct the records directly when you need JSON
-structure (see [Structured instructions](#structured-instructions-and-rubrics)).
-
 ### Noul — yes/no
 
-Answers with a probability from 0 to 1. Near 1 means yes, near 0 means no, near 0.5 means the model
-genuinely cannot tell. You pick the threshold; nothing forces you to collapse it to a `bool`.
+Answers with a probability from 0 to 1. Near 1 is yes, near 0 is no, near 0.5 means the model genuinely
+cannot tell. You pick the threshold; nothing forces you to collapse it to a `bool`.
 
 ```csharp
 ["urgent"] = Question.Noul("Does this message express urgency?")
 ```
 
-Optionally pin down where the line sits:
+Pin down where the line sits when the default reading is not yours:
 
 ```csharp
 ["complaint"] = Question.Noul(
@@ -146,34 +131,35 @@ Optionally pin down where the line sits:
 
 ### Choice — pick one
 
-Up to 255 named options. The answer carries the winning name, a confidence, and the probability of
-every option — so you can see when second place was close.
+The answer carries the winning name, a confidence, and the probability of every option — so you can see when
+second place was close.
 
 ```csharp
-["queue"] = Question.Choice("Which queue should handle this?", new Dictionary<string, string?>
+["queue"] = Question.Choice("Which queue should handle this?", new Dictionary<string, JsonContent>
 {
     ["billing"]      = "Charges, refunds, invoices",
     ["integrations"] = "Third-party connections: Stripe, Shopify, webhooks",
-    ["other"]        = null,   // null means "the name speaks for itself"
+    ["other"]        = default,   // no description: the API reads it by its name
 })
+
+// or, when the names speak for themselves:
+["tone"] = Question.Choice("What is the customer's tone?", "calm", "frustrated", "angry")
 ```
 
 ### Score — rate on a scale
 
-2–10 ordered levels. The answer is the probability-weighted average, so `1.7` means "mostly level 2,
-pulled a little towards level 1" — more information than any single level could carry.
+The answer is the probability-weighted average across the rubric, so `1.7` means "mostly level 2, pulled a
+little towards level 1" — more information than any single level could carry. The first level is score `0`.
 
 ```csharp
 ["frustration"] = Question.Score("How frustrated is this customer?",
-    "calm and matter-of-fact",
-    "mildly annoyed",
-    "clearly frustrated",
-    "angry, threatening to leave")
+    "calm and matter-of-fact", "mildly annoyed", "clearly frustrated", "angry, threatening to leave")
 ```
 
-The first level is score `0`.
-
----
+The API accepts at most 255 choice options and 2–10 score levels. Jev.Net does not enforce those numbers
+client-side — an out-of-range question comes back as a `JevUnprocessableEntityException` naming the field.
+What *is* rejected before the network is structural: an empty question set, an empty option list, an empty
+rubric, a raw question with no `type`.
 
 ## Choices from enums
 
@@ -193,82 +179,60 @@ Sentiment s = res.Choice("sentiment").As<Sentiment>();
 ```
 
 - Member names travel as snake_case: `TechnicalIssue` → `technical_issue`.
-- `[Description]` becomes the option's rubric. Without one, the option is sent with a `null` description.
-- `As<TEnum>()` maps the answer back, and throws `JevResponseValidationException` if the API ever
-  returns a name that is not a member — which beats a silently wrong `default` value.
+- `[Description]` becomes the option's rubric; without one the option is sent with an explicit `null`.
+- `As<TEnum>()` throws `JevResponseValidationException` if the API ever returns a name that is not a member —
+  which beats a silently wrong `default`.
 
-Add a member to the enum and both the request and your `switch` update together; the compiler tells you
-about the branch you forgot.
+Add a member and both the request and your `switch` update together; the compiler names the branch you forgot.
+`EnumNames.ToWire` / `EnumNames.FromWire` expose the mapping if you need it elsewhere.
 
-Need the raw name instead? `res.Choice("sentiment").Choice` is the string. `EnumNames.ToWire` /
-`EnumNames.FromWire` expose the mapping if you need it elsewhere.
+## State, instructions and criteria: `JsonContent`
 
----
-
-## State: text or structure
-
-State can be a string, an object, an array, or `null` — anything serializable. Objects are sent as JSON,
-so the model sees labelled fields instead of a paragraph you had to template by hand:
+Everywhere the API takes "text, an object, or an array", Jev.Net takes a `JsonContent`. It converts
+implicitly from `string` and from `JsonNode`, and `JsonContent.From(value)` serializes anything else — pass a
+`JsonTypeInfo<T>` as the second argument in a trimmed or AOT app.
 
 ```csharp
-var order = new
-{
-    id = "ORD-91821",
-    total = 2340.00m,
-    country = "MT",
-    previous_orders = 0,
-    billing_matches_shipping = false,
-};
-
-var res = await client.SystemOneAsync(order, new Dictionary<string, Question>
-{
-    ["fraud"] = Question.Noul("Does this order look fraudulent?"),
-});
+await client.SystemOneAsync("plain text", questions);
+await client.SystemOneAsync(new JsonObject { ["document"] = "…", ["locale"] = "uk" }, questions);
+await client.SystemOneAsync(JsonContent.From(order), questions);              // reflection
+await client.SystemOneAsync(JsonContent.From(order, MyJson.Default.Order), questions);   // AOT-safe
 ```
 
-Budget: 64k tokens per request, of which 32k for the state plus the longest question.
+Nodes are deep-cloned on the way in and out, so one `JsonObject` can appear in several questions and a
+question can be sent any number of times — `System.Text.Json` nodes have a single parent, and holding one by
+reference would throw the second time. A default `JsonContent` means *omit this field*; `JsonContent.Null`
+means *send an explicit null*.
 
----
-
-## Structured instructions and rubrics
-
-Instructions, choice options and score levels all accept JSON, not just strings. Use it when a rubric
-needs structure of its own — what a level means, which signals to look for, what it explicitly excludes.
-Construct the question records directly:
+Rubrics take structure too, which is how you say what a level means and what it excludes:
 
 ```csharp
 var tier = new ChoiceQuestion
 {
-    Instructions = new JsonObject
-    {
-        ["field"]    = new JsonObject { ["name"] = "support_tier", ["type"] = "string" },
-        ["question"] = "Route the ticket to the right tier.",
-    },
-    Criteria = new Dictionary<string, JsonNode?>
+    Instructions = new JsonObject { ["question"] = "Route the ticket to the right tier." },
+    Criteria = new Dictionary<string, JsonContent>
     {
         ["self_serve"] = new JsonObject
         {
             ["what"]     = "Answered by an existing help article",
             ["not_for"]  = "Anything touching the customer's data or money",
-            ["examples"] = new JsonArray("how do I change my password", "where are my invoices"),
-        },
-        ["engineering"] = new JsonObject
-        {
-            ["what"]     = "Needs code, logs, or a deploy",
-            ["examples"] = new JsonArray("webhooks stopped firing", "500 on checkout"),
+            ["examples"] = new JsonArray("how do I change my password"),
         },
     },
 };
 ```
 
-Score levels work the same way, as an array of objects with `summary` and `signals`. See
-[example 07](examples/Jev.Net.Examples/07_StructuredInstructions.cs).
+## Raw questions
 
----
+A `JsonObject` converts implicitly to a `Question` and is sent exactly as given — the escape hatch for fields
+or question types the API gains before this SDK models them. Only its structure is checked (`type` present,
+`choice` and `score` have `criteria`, a score rubric is nonempty); its schema is left to the API.
+
+```csharp
+["experimental"] = new JsonObject { ["type"] = "noul", ["instructions"] = "…", ["new_field"] = 42 }
+```
 
 ## Reading answers
-
-`SystemOneResponse` gives you typed accessors that fail loudly when the name or type is wrong:
 
 ```csharp
 NoulAnswer   n = res.Noul("urgent");     // .Noul            0..1
@@ -276,36 +240,51 @@ ChoiceAnswer c = res.Choice("category"); // .Choice, .Confidence, .Probabilities
 ScoreAnswer  s = res.Score("anger");     // .Score, .Confidence, .Legend, .Probabilities
 ```
 
-Asking for the wrong type, or a name that was not in the request, throws
-`JevResponseValidationException` rather than returning `null`.
-
-The full distribution is always there when you want it:
+Asking for the wrong type, or a name that was not in the request, throws `JevResponseValidationException`
+rather than returning `null`. The full distribution is always there when you want it:
 
 ```csharp
 foreach (var (name, p) in res.Choice("category").Probabilities.OrderByDescending(x => x.Value))
     Console.WriteLine($"{name,-16} {p:P1}");
-
-var score = res.Score("anger");
-foreach (var (level, p) in score.Probabilities.OrderBy(x => x.Key))
-    Console.WriteLine($"{level} {score.Legend[level]} {p:P1}");
 ```
 
 Also on the response: `res.Model` (the exact version that answered), `res.Usage` (token counts) and
 `res.RequestId` (the `x-typesafe-request-id` header — quote it in support requests).
 
----
+## Typed responses
+
+Derive from `SystemOneResponse` and declare answer-typed properties; each is filled from the answer of the
+same name (`[JsonPropertyName]`, else the property name — exact, case-insensitive, then snake_case). Every
+such property is required unless it carries `[OptionalAnswer]`; a missing or wrong-kinded answer is a
+`JevResponseValidationException` naming the field.
+
+```csharp
+sealed record Ticket : SystemOneResponse
+{
+    public NoulAnswer Urgent { get; set; } = null!;
+    public ChoiceAnswer Category { get; set; } = null!;
+    [OptionalAnswer] public ScoreAnswer? Anger { get; set; }
+}
+
+var ticket = await client.SystemOneAsync<Ticket>(state, questions);
+Category c = ticket.Category.As<Category>();
+```
+
+Optional is marked rather than inferred from nullability, because the trimmer removes nullability metadata —
+inferring from it would make the same class validate differently in a Native AOT build.
 
 ## Configuration
 
 ```csharp
 using var client = new JevClient(new JevClientOptions
 {
-    ApiKey        = "sk-...",                          // default: TYPESAFE_API_KEY
-    BaseAddress   = new Uri("https://api.typesafe.ai"), // default: TYPESAFE_BASE_URL, then this
-    DefaultModel  = "jev-latest",                       // default: TYPESAFE_DEFAULT_MODEL, then this
-    Timeout       = TimeSpan.FromSeconds(10),           // per attempt
-    MaxRetries    = 2,
-    MaxRetryAfter = TimeSpan.FromSeconds(60),
+    ApiKey        = "sk-...",
+    BaseAddress   = new Uri("https://api.typesafe.ai"),
+    DefaultModel  = "jev-latest",
+    Timeout       = TimeSpan.FromSeconds(10),   // per attempt
+    Retry         = RetryPolicy.Default,
+    DefaultHeaders = new Dictionary<string, string> { ["X-Team"] = "support-platform" },
+    LoggerFactory = loggerFactory,
 });
 ```
 
@@ -315,111 +294,164 @@ using var client = new JevClient(new JevClientOptions
 | `BaseAddress` | `https://api.typesafe.ai` | `TYPESAFE_BASE_URL` |
 | `DefaultModel` | `jev-latest` | `TYPESAFE_DEFAULT_MODEL` |
 | `Timeout` | 10 s per attempt | — |
-| `MaxRetries` | 2 | — |
-| `MaxRetryAfter` | 60 s | — |
+| `Retry` | `RetryPolicy.Default` | — |
+| `LoggerFactory` | none — no logging | — |
+| `TimeProvider` | `TimeProvider.System` | — |
 
-A missing API key throws at construction, not on the first call.
+Blank environment variables count as unset. A missing API key throws at construction, not on the first call.
+`Authorization`, `Accept`, `Content-Type`, `User-Agent`, `X-TypeSafe-SDK` and `X-TypeSafe-Runtime` are
+protected: neither default nor per-call headers can replace them.
 
-Bring your own `HttpClient` — from `IHttpClientFactory`, with your own handlers, proxy or logging:
+Pin a concrete model (`jev-1.13.0`, not `jev-latest`) wherever you have tuned thresholds against its
+probabilities.
 
-```csharp
-using var client = new JevClient(httpClient, new JevClientOptions { MaxRetries = 0 });
-```
-
-The client sets its own per-attempt timeout internally, so leave `HttpClient.Timeout` alone.
-
-Override the model for a single call:
+## Per-call options
 
 ```csharp
-await client.SystemOneAsync(state, questions, model: "jev-1.13.0");
+var res = await client.SystemOneAsync(state, questions, new JevRequestOptions
+{
+    Model        = "jev-1.13.0",
+    Retry        = RetryPolicy.None,
+    Timeout      = TimeSpan.FromSeconds(5),
+    ExtraHeaders = new Dictionary<string, string> { ["X-Request-Source"] = "batch-job" },
+    ExtraBody    = new Dictionary<string, JsonNode?> { ["experimental"] = true },
+});
 ```
 
-Pin a concrete version when you need reproducible answers; `jev-latest` moves when TypeSafe ships.
-
----
+`ExtraBody` cannot overwrite `state`, `model` or `questions`.
 
 ## Retries and timeouts
 
-Defaults mirror the official SDKs, so behaviour matches what the Python and TypeScript docs describe:
+`RetryPolicy` defaults mirror the official SDKs, so behaviour matches what their docs describe:
 
-- **Retried:** `408`, `429`, all `5xx` (including `529 overloaded`), connection failures, and per-attempt timeouts.
-- **Not retried:** `400`, `401`, `403`, `404`, `422` — retrying a malformed request just wastes a call.
-- **Backoff:** 500 ms, doubling to a 5 s ceiling, with 25 % jitter subtracted.
-- **`Retry-After`:** honoured (both `Retry-After` and `retry-after-ms`) up to `MaxRetryAfter`; longer waits fall back to backoff.
-- **`Timeout` is per attempt.** With `MaxRetries = 2` a single call can span three attempts plus backoff.
-  Use a `CancellationToken` to bound the whole thing.
+| | |
+|---|---|
+| `MaxRetries` | 2 |
+| `HttpStatuses` | 408, 429, 500–599 (including the API's `529 overloaded`) |
+| `RetryConnectionErrors` / `RetryTimeouts` | true |
+| `BackoffInitial` → `BackoffMax` | 0.5 s doubling to 5 s |
+| `BackoffJitter` | 0.25 subtracted at random |
+| `RespectRetryAfter` / `MaxRetryAfter` | true, up to 60 s; longer waits fall back to backoff |
+| `Budget` | 30 s for the whole call, waits included |
+| `Predicate` | your last word — it can only narrow the rules above |
 
-No Polly dependency — the policy is about thirty lines against `HttpClient`. If you need pluggable
-policies, pass your own `HttpClient` built with `Microsoft.Extensions.Http.Resilience` and set
-`MaxRetries = 0`.
+`400`, `401`, `403`, `404` and `422` are never retried: retrying a malformed request just spends another call.
+`Timeout` is per attempt, so with two retries one call can span three timeouts plus backoff — `Budget` is the
+ceiling on the lot, and a retry whose wait would exceed it is not taken.
 
----
+`RetryPolicy.None` turns retrying off. There is no Polly dependency; if you want pluggable policies, pass
+your own `HttpClient` built with `Microsoft.Extensions.Http.Resilience` and set `Retry = RetryPolicy.None`.
 
 ## Errors
 
 Everything derives from `JevException`:
 
-| Exception | Status | Notes |
-|---|---|---|
-| `JevBadRequestException` | 400 | Malformed request |
-| `JevAuthenticationException` | 401 | Missing or invalid API key |
-| `JevPermissionDeniedException` | 403 | Key not allowed to do this |
-| `JevNotFoundException` | 404 | Unknown endpoint or resource |
-| `JevUnprocessableEntityException` | 422 | Validation: too many options, too few score levels, … |
-| `JevRateLimitException` | 429 | Exposes `RetryAfter` |
-| `JevInternalServerException` | 5xx | Including `529` overloaded |
-| `JevConnectionException` | — | No HTTP response at all |
-| `JevTimeoutException` | — | One attempt exceeded `Timeout`; exposes `Timeout` |
-| `JevResponseValidationException` | — | 2xx with an unexpected shape; exposes `FieldPath` |
+| Exception | When |
+|---|---|
+| `JevBadRequestException` | 400 |
+| `JevAuthenticationException` | 401 — missing or invalid key |
+| `JevPermissionDeniedException` | 403 |
+| `JevNotFoundException` | 404 |
+| `JevUnprocessableEntityException` | 422 — validation |
+| `JevRateLimitException` | 429 — exposes `RetryAfter` |
+| `JevInternalServerException` | 5xx, including 529 |
+| `JevConnectionException` | no HTTP response at all |
+| `JevTimeoutException` | one attempt exceeded `Timeout`; exposes `Timeout` |
+| `JevResponseValidationException` | a 2xx whose body is wrong; `FieldPath` names the field |
 
-Every `JevApiException` carries `Status`, the raw `Body`, and `RequestId`.
-
-```csharp
-try
-{
-    var res = await client.SystemOneAsync(state, questions);
-}
-catch (JevRateLimitException ex)          // retries already exhausted
-{
-    logger.LogWarning("Rate limited, server asked for {Delay}", ex.RetryAfter);
-}
-catch (JevApiException ex)
-{
-    logger.LogError("Jev returned {Status}, request {RequestId}: {Body}", ex.Status, ex.RequestId, ex.Body);
-}
-```
-
----
+Every `JevApiException` carries `Status`, the raw `Body`, `RequestId` and `Endpoint`. `Message` reads
+`POST https://api.typesafe.ai/v1/systemone: 429 slow down (request_id=…)`, and the endpoint never carries
+credentials or a query string.
 
 ## Cancellation
 
-The token covers the whole call, retries and backoff included:
+The token covers the whole call, retries and waits included:
 
 ```csharp
 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
 var res = await client.SystemOneAsync(state, questions, cancellationToken: cts.Token);
 ```
 
-Cancelling raises `OperationCanceledException`; a per-attempt timeout raises `JevTimeoutException`.
-The two are kept distinct on purpose — one is your decision, the other is the network's.
+Cancelling raises `OperationCanceledException` and is never retried; a per-attempt timeout raises
+`JevTimeoutException`. The two are kept apart on purpose — one is your decision, the other is the network's.
 
----
+## Logging
 
-## Listing models
+Pass a `LoggerFactory` and the client logs one Information line per attempt, with headers and bodies at
+Debug. Credential-bearing headers — and any header whose name contains `token`, `secret` or `key` — are
+redacted. **Bodies are not**: they are whatever state you sent. Do not enable Debug where that matters.
+
+## Observability
+
+Traces and metrics go through `ActivitySource` and `Meter`, which ship in the .NET runtime — so
+OpenTelemetry support costs no package reference, and with nobody listening the client skips the bookkeeping.
 
 ```csharp
-foreach (var m in await client.ListModelsAsync())
-    Console.WriteLine($"{m.Name}  {m.ReleaseDate}  {m.Description}");
+services.AddOpenTelemetry()
+    .WithTracing(t => t.AddSource(JevTelemetry.ActivitySourceName))
+    .WithMetrics(m => m.AddMeter(JevTelemetry.MeterName));
 ```
 
----
+One span covers one call *including its retries* (`http.request.resend_count`). Individual HTTP attempts come
+from .NET's own instrumentation and appear beneath it only if you subscribe to that as well.
+
+| Instrument | |
+|---|---|
+| `jev_net.client.request.duration` | Histogram, seconds — the whole call, waits included |
+| `jev_net.client.retries` | Counter — attempts after the first |
+| `jev_net.client.token.usage` | Counter — tagged `input` / `output` and the answering model |
+
+**No content is recorded** — no state, questions, answers or headers. What is recorded is what you configured:
+the model you asked for and your base URL's host and path. A failed span's description is fixed text
+(`HTTP 401`, `cancelled`, `timeout`), never the server's message, which could echo your request.
+
+## Dependency injection
+
+There is no `AddJevClient()` package — it would cost the one-dependency promise, and registering the client
+is a few lines you can read. The client is thread-safe and cheap to construct.
+
+```csharp
+// A singleton on the SDK's own handler — the one to reach for.
+services.AddSingleton<IJevClient>(sp => new JevClient(new JevClientOptions
+{
+    ApiKey = sp.GetRequiredService<IConfiguration>()["TypeSafe:ApiKey"],
+    LoggerFactory = sp.GetService<ILoggerFactory>(),
+}));
+```
+
+Through `IHttpClientFactory`, when you want your host's handlers, register it **transient** — a singleton
+would hold one `HttpClient` forever and the factory could never rotate the handler underneath it:
+
+```csharp
+services.AddHttpClient("jev");
+services.AddTransient<IJevClient>(sp => new JevClient(
+    sp.GetRequiredService<IHttpClientFactory>().CreateClient("jev"),
+    new JevClientOptions
+    {
+        ApiKey = sp.GetRequiredService<IConfiguration>()["TypeSafe:ApiKey"],
+        DisposeHttpClient = false,     // the factory owns the handler
+        LoggerFactory = sp.GetService<ILoggerFactory>(),
+    }));
+```
+
+## Testing code that uses the client
+
+`JevClient` implements `IJevClient`, so your code can take the interface and your tests can hand it a fake.
+To fake at the HTTP level instead — and exercise encoding, retries and decoding for real — give the real
+client your own handler:
+
+```csharp
+using var client = new JevClient(new HttpClient(myHandler), new JevClientOptions { ApiKey = "test" });
+```
+
+That is exactly what the examples do offline, and what the test suite does throughout.
 
 ## Examples
 
 Fifteen runnable examples live in [`examples/Jev.Net.Examples`](examples/Jev.Net.Examples) — and they run
 **without an API key**. Offline, a local fake answers from the questions you actually sent, so the whole path
 (encoding → retries → decoding → typed accessors) is exercised for real; only the model's judgment is
-synthetic. Clone and go:
+synthetic.
 
 ```bash
 dotnet run --project examples/Jev.Net.Examples            # list them
@@ -427,75 +459,45 @@ dotnet run --project examples/Jev.Net.Examples -- 03      # run one, offline
 dotnet run --project examples/Jev.Net.Examples -- all     # run all, offline
 ```
 
-Set `TYPESAFE_API_KEY` to call the real API, and pass `--offline` to force the fake back on.
-See [`examples/Jev.Net.Examples/README.md`](examples/Jev.Net.Examples/README.md) for the full setup.
-
-| # | Example | Shows |
-|---|---|---|
-| 01 | [Basic noul](examples/Jev.Net.Examples/01_BasicNoul.cs) | The smallest useful call |
-| 02 | [Choice from options](examples/Jev.Net.Examples/02_ChoiceFromOptions.cs) | Options built at runtime |
-| 03 | [Choice from enum](examples/Jev.Net.Examples/03_ChoiceFromEnum.cs) | `[Description]` rubrics, typed answers |
-| 04 | [Score rubric](examples/Jev.Net.Examples/04_ScoreRubric.cs) | Ordered levels and the full distribution |
-| 05 | [Multiple questions](examples/Jev.Net.Examples/05_MultipleQuestions.cs) | Five questions, one round trip |
-| 06 | [Structured state](examples/Jev.Net.Examples/06_StructuredState.cs) | Objects instead of templated strings |
-| 07 | [Structured instructions](examples/Jev.Net.Examples/07_StructuredInstructions.cs) | JSON rubrics with `what` / `not_for` / `examples` |
-| 08 | [Confidence routing](examples/Jev.Net.Examples/08_ConfidenceRouting.cs) | Automate the confident cases, escalate the rest |
-| 09 | [Error handling](examples/Jev.Net.Examples/09_ErrorHandling.cs) | Every exception type and what to do about it |
-| 10 | [Client configuration](examples/Jev.Net.Examples/10_ClientConfiguration.cs) | Timeouts, retries, custom `HttpClient`, pinned models |
-| 11 | [List models](examples/Jev.Net.Examples/11_ListModels.cs) | `GET /v1/models` |
-| 12 | [Parallel fan-out](examples/Jev.Net.Examples/12_ParallelFanOut.cs) | Many states at once, under the rate limit |
-| 13 | [Cancellation](examples/Jev.Net.Examples/13_Cancellation.cs) | Token vs. per-attempt timeout |
-| 14 | [Taxonomy walk](examples/Jev.Net.Examples/14_TaxonomyWalk.cs) | Classify down a tree, stop when unsure |
-| 15 | [Noul boundaries](examples/Jev.Net.Examples/15_NoulBoundaries.cs) | Moving the decision boundary with criteria |
-
----
+Set `TYPESAFE_API_KEY` to call the real API, and pass `--offline` to force the fake back on. See the
+[examples README](examples/Jev.Net.Examples/README.md) for the full list and setup.
 
 ## Project layout
 
 ```
 src/Jev.Net/
-  Client/       IJevClient, JevClient, JevClientOptions
-  Questions/    Question + Noul/Choice/Score questions, EnumNames
+  Client/       IJevClient, JevClient, JevClientOptions, JevRequestOptions, RetryPolicy
+  Questions/    Question + Noul/Choice/Score/Raw questions, EnumNames
   Answers/      Answer + Noul/Choice/Score answers, AnswerConverter
-  Models/       SystemOneResponse, Usage, ModelCard
+  Models/       SystemOneResponse, AnswerBinder, Usage, ModelCard
+  Json/         JsonContent, JevJson, the source-generated JSON context
+  Diagnostics/  JevTelemetry, JevDefaults, Log
   Exceptions/   JevException, JevApiException, status-specific exceptions
-tests/Jev.Net.Tests.Unit/     xUnit tests over a fake HttpMessageHandler
-examples/Jev.Net.Examples/    15 runnable examples
+tests/Jev.Net.Tests.Unit/    54 tests, offline, on all three target frameworks
+tests/Jev.Net.AotSmoke/      published as a native binary and run in CI
+examples/Jev.Net.Examples/   15 runnable examples
+scripts/                     the guards CI runs: one dependency, current API baseline, changesets
 ```
 
-Everything lives in the single `Jev.Net` namespace — the folders organise the source, not the API surface,
-so one `using Jev.Net;` is all a consumer needs.
-
-Build and test:
+Everything lives in the single `Jev.Net` namespace — the folders organise the source, not the API surface, so
+one `using Jev.Net;` is all a consumer needs.
 
 ```bash
 dotnet build -c Release
 dotnet test
 ```
 
----
-
 ## Roadmap
 
-- [x] Core client, typed questions and answers, exception hierarchy, retries
-- [ ] `Jev.Net.DependencyInjection` — `services.AddJevClient(...)` over `IHttpClientFactory`
-- [ ] CI: build, test, and publish to NuGet on tag
-- [ ] `Jev.Net.Extensions.AI` — `Microsoft.Extensions.AI` integration
-- [ ] Source-generated `JsonSerializerContext` for Native AOT
-
----
-
-## Contributing
-
-Issues and pull requests are welcome. Please keep the dependency count at zero for the core package,
-and add a test for anything that touches request or response shaping.
-
-The wire format this client targets is documented at [docs.typesafe.ai](https://docs.typesafe.ai) —
-`POST /v1/systemone` and `GET /v1/models`. If the API changes, start there.
+- [x] Core client, typed questions and answers, exception hierarchy
+- [x] `RetryPolicy`, per-call options, logging, OpenTelemetry
+- [x] `net8.0` / `net9.0` / `net10.0`, trim- and AOT-safe, CI and release automation
+- [ ] `Microsoft.Extensions.AI` integration
+- [ ] Opt-in live integration tests against the real API
 
 ## License
 
 MIT — see [LICENSE](LICENSE).
 
-Jev and TypeSafe are products of TypeSafe AI; this library is an independent community project and is
-not affiliated with or endorsed by them.
+Jev and TypeSafe are products of TypeSafe AI. This is an independent community project, not affiliated with
+or endorsed by them.
