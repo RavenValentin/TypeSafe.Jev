@@ -2,6 +2,11 @@
 
 All notable changes to this project. Versions follow [semantic versioning](https://semver.org).
 
+## 1.0.0 — 2026-09-26
+
+Stable release. The public API is unchanged from 0.1.0 and is now covered by semantic versioning;
+package validation checks every build against it.
+
 ## 0.1.0 — 2026-09-21
 
 First release.

@@ -4,7 +4,7 @@
 # Microsoft.Extensions.Logging.Abstractions and nothing else — per group, not in aggregate, so a package
 # that doubles up in one framework and drops it in another cannot average its way through.
 #
-#   scripts/check-dependencies.sh artifacts/TypeSafe.Jev.0.1.0.nupkg
+#   scripts/check-dependencies.sh artifacts/TypeSafe.Jev.1.0.0.nupkg
 set -euo pipefail
 
 pkg="${1:?usage: check-dependencies.sh <path-to.nupkg>}"

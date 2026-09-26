@@ -43,7 +43,7 @@ dotnet add package TypeSafe.Jev
 ```
 
 ```xml
-<PackageReference Include="TypeSafe.Jev" Version="0.1.0" />
+<PackageReference Include="TypeSafe.Jev" Version="1.0.0" />
 ```
 
 ## Quickstart
